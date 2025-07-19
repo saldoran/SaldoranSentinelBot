@@ -17,13 +17,11 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=saldoran-sentinel
 
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
+# Security settings (упрощенные для совместимости)
+NoNewPrivileges=false
+PrivateTmp=false
+ProtectSystem=false
 ProtectHome=false
-ReadWritePaths=/home/ubuntu/SaldoranSentinelBot/logs
-ReadWritePaths=/home/ubuntu/bots
 
 # Resource limits
 LimitNOFILE=65536

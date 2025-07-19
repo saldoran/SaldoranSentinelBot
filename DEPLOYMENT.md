@@ -111,7 +111,33 @@ chmod +x ~/bots/your-bot-name/*.sh
 
 ## Устранение неполадок
 
-### Сервис не запускается
+### ❌ Ошибка systemd status=226/NAMESPACE
+Если сервис не запускается с ошибкой `status=226/NAMESPACE`, выполните:
+
+```bash
+# 1. Диагностика проблемы
+cd ~/SaldoranSentinelBot
+./diagnose_systemd.sh
+
+# 2. Исправление конфигурации systemd
+./fix_systemd.sh
+```
+
+**Альтернативное решение вручную:**
+```bash
+# Остановить сервис
+sudo systemctl stop saldoran-sentinel
+
+# Обновить конфигурацию
+sudo cp systemd/saldoran-sentinel.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# Запустить заново
+sudo systemctl start saldoran-sentinel
+sudo systemctl status saldoran-sentinel
+```
+
+### Сервис не запускается (другие ошибки)
 ```bash
 # Проверить логи
 sudo journalctl -u saldoran-sentinel -n 50
