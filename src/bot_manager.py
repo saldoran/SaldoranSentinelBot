@@ -10,8 +10,10 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
-from .config import Config
-from .logger import logger
+from config import Config
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -104,15 +106,53 @@ class BotManager:
     
     def _is_bot_running(self, bot_name: str) -> Tuple[bool, Optional[int]]:
         """Проверка запущен ли бот"""
+        logger.debug(f"Проверка статуса бота {bot_name}, целевой пользователь: {Config.TARGET_USER}")
+        
+        # Сначала проверяем PID файл (более надежно для наших скриптов)
+        pid_file = Path(f"/tmp/{bot_name}.pid")
+        logger.debug(f"Проверка PID файла: {pid_file}")
+        
+        if pid_file.exists():
+            try:
+                with open(pid_file, 'r') as f:
+                    pid = int(f.read().strip())
+                
+                logger.debug(f"Найден PID в файле: {pid}")
+                
+                # Проверяем, существует ли процесс с этим PID
+                if psutil.pid_exists(pid):
+                    try:
+                        proc = psutil.Process(pid)
+                        proc_user = proc.username()
+                        logger.debug(f"Процесс {pid} существует, пользователь: {proc_user}")
+                        
+                        # Дополнительная проверка, что это наш процесс
+                        if proc_user == Config.TARGET_USER:
+                            logger.info(f"Бот {bot_name} запущен (PID: {pid})")
+                            return True, pid
+                        else:
+                            logger.debug(f"Процесс {pid} принадлежит другому пользователю: {proc_user}")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                        logger.debug(f"Не удалось получить информацию о процессе {pid}: {e}")
+                else:
+                    logger.debug(f"Процесс с PID {pid} не существует")
+                        
+            except (ValueError, IOError) as e:
+                logger.debug(f"Ошибка чтения PID файла для {bot_name}: {e}")
+        else:
+            logger.debug(f"PID файл {pid_file} не найден")
+        
+        # Если PID файл не помог, используем старый метод поиска по процессам
+        logger.debug(f"Поиск процессов бота {bot_name} по командной строке...")
         try:
-            # Ищем процессы, содержащие имя бота
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
                 try:
                     if proc.info['username'] != Config.TARGET_USER:
                         continue
                         
                     cmdline = ' '.join(proc.info['cmdline'] or [])
-                    if bot_name in cmdline and 'run_bot' in cmdline:
+                    if bot_name in cmdline and ('run_bot' in cmdline or f'{bot_name}' in cmdline):
+                        logger.info(f"Найден процесс бота {bot_name} (PID: {proc.info['pid']})")
                         return True, proc.info['pid']
                         
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -120,7 +160,8 @@ class BotManager:
                     
         except Exception as e:
             logger.error(f"Ошибка при проверке статуса бота {bot_name}: {e}")
-            
+        
+        logger.debug(f"Бот {bot_name} не запущен")
         return False, None
     
     def _get_directory_size(self, path: Path) -> float:

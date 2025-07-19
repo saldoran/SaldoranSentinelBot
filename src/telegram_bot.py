@@ -1,420 +1,432 @@
-"""
-Telegram-бот интерфейс для SaldoranBotSentinel
-"""
-
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 
-from .config import Config
-from .bot_manager import BotManager, BotInfo
-from .resource_monitor import ResourceMonitor
-from .logger import logger
+from config import Config
+from logger import get_logger
+from bot_manager import BotManager
+from resource_monitor import ResourceMonitor
 
+logger = get_logger(__name__)
 
-class SentinelTelegramBot:
-    """Telegram-бот для управления SaldoranBotSentinel"""
-    
-    def __init__(self, bot_manager: BotManager, resource_monitor: ResourceMonitor):
+class TelegramBot:
+    def __init__(self, config: Config, bot_manager: BotManager, resource_monitor: ResourceMonitor):
+        self.config = config
         self.bot_manager = bot_manager
         self.resource_monitor = resource_monitor
-        self.admin_id = Config.TELEGRAM_ADMIN_ID
-        self.application = None
         
+        # Application с post_init
+        self.app: Application = (
+            Application.builder()
+            .token(config.TELEGRAM_BOT_TOKEN)
+            .post_init(self._post_init)
+            .build()
+        )
+        
+        # Регистрируем обработчики
+        self._register_handlers()
+        
+    def _register_handlers(self):
+        """Регистрация всех обработчиков команд и callback'ов"""
+        # Команды
+        self.app.add_handler(CommandHandler("start", self._cmd_start))
+        self.app.add_handler(CommandHandler("help", self._cmd_help))
+        self.app.add_handler(CommandHandler("status", self._cmd_status))
+        self.app.add_handler(CommandHandler("bots", self._cmd_bots))
+        self.app.add_handler(CommandHandler("resources", self._cmd_resources))
+        self.app.add_handler(CommandHandler("logs", self._cmd_logs))
+        
+        # Callback обработчики
+        self.app.add_handler(CallbackQueryHandler(self._handle_callback))
+        
+    async def _post_init(self, app: Application):
+        """Инициализация после создания приложения"""
+        logger.info("Инициализация Telegram бота...")
+        
+    async def start(self):
+        """Запуск Telegram бота"""
+        try:
+            logger.info("Запуск Telegram бота...")
+            await self.app.initialize()
+            await self.app.updater.start_polling()
+            await self.app.start()
+            logger.info("Telegram бот успешно запущен")
+        except Exception as e:
+            logger.error(f"Ошибка при запуске Telegram бота: {e}")
+            raise
+            
+    async def stop(self):
+        """Остановка Telegram бота"""
+        try:
+            logger.info("Остановка Telegram бота...")
+            await self.app.updater.stop()
+            await self.app.stop()
+            await self.app.shutdown()
+            logger.info("Telegram бот остановлен")
+        except Exception as e:
+            logger.error(f"Ошибка при остановке Telegram бота: {e}")
+            
+    async def send_startup_notification(self):
+        """Отправка уведомления о запуске"""
+        try:
+            message = "✅ SaldoranSentinelBot запущен\n\nИспользуйте /help для списка команд"
+            await self.app.bot.send_message(
+                chat_id=self.config.TELEGRAM_ADMIN_ID,
+                text=message,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления о запуске: {e}")
+            
+    async def send_shutdown_notification(self):
+        """Отправка уведомления о завершении"""
+        try:
+            message = "🔄 SaldoranSentinelBot завершает работу..."
+            await self.app.bot.send_message(
+                chat_id=self.config.TELEGRAM_ADMIN_ID,
+                text=message,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления о завершении: {e}")
+            
+    async def send_notification(self, message: str):
+        """Отправка уведомления администратору"""
+        try:
+            await self.app.bot.send_message(
+                chat_id=self.config.TELEGRAM_ADMIN_ID,
+                text=message,
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            logger.error(f"Ошибка при отправке уведомления: {e}")
+            
     def _is_admin(self, user_id: int) -> bool:
-        """Проверка является ли пользователь администратором"""
-        return user_id == self.admin_id
-    
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start"""
-        if not self._is_admin(update.effective_user.id):
-            await update.message.reply_text("❌ У вас нет прав доступа к этому боту.")
-            return
-            
-        welcome_text = (
-            "🤖 **SaldoranBotSentinel** запущен!\n\n"
-            "Доступные команды:\n"
-            "• `/list` - Список ботов с управлением\n"
-            "• `/status` - Статус системы и ресурсов\n"
-            "• `/monitor` - Отчет мониторинга\n"
-            "• `/cleanup` - Экстренная очистка памяти\n"
-            "• `/help` - Справка по командам"
-        )
+        """Проверка прав администратора"""
+        return user_id == self.config.TELEGRAM_ADMIN_ID
         
-        await update.message.reply_text(welcome_text, parse_mode=ParseMode.MARKDOWN)
-        logger.info(f"Пользователь {update.effective_user.username} запустил бота")
-    
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /help"""
+    async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /start"""
         if not self._is_admin(update.effective_user.id):
             return
             
-        help_text = (
-            "📖 **Справка по командам:**\n\n"
-            "🤖 **Управление ботами:**\n"
-            "• `/list` - Показать всех ботов с кнопками управления\n"
-            "• Кнопки: ▶️/⏹️ (Старт/Стоп), 🔄 (Рестарт), ℹ️ (Инфо)\n\n"
-            "📊 **Мониторинг системы:**\n"
-            "• `/status` - Краткий статус системы\n"
-            "• `/monitor` - Подробный отчет мониторинга\n"
-            "• `/cleanup` - Экстренная очистка памяти\n\n"
-            "⚙️ **Настройки:**\n"
-            f"• Максимум CPU: {Config.MAX_CPU_PERCENT}%\n"
-            f"• Минимум свободной RAM: {Config.MIN_FREE_RAM_MB}MB\n"
-            f"• Интервал мониторинга: {Config.MONITORING_INTERVAL}с"
+        message = (
+            "🤖 <b>SaldoranSentinelBot</b>\n\n"
+            "Система мониторинга и управления ботами\n\n"
+            "Используйте /help для списка команд"
         )
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
         
-        await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
-    
-    async def list_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /list - показать список ботов"""
+    async def _cmd_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /help"""
+        if not self._is_admin(update.effective_user.id):
+            return
+            
+        message = (
+            "📋 <b>Доступные команды:</b>\n\n"
+            "/start - Запуск бота\n"
+            "/help - Справка\n"
+            "/status - Общий статус системы\n"
+            "/bots - Управление ботами\n"
+            "/resources - Мониторинг ресурсов\n"
+            "/logs - Просмотр логов\n"
+        )
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    async def _cmd_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /status"""
         if not self._is_admin(update.effective_user.id):
             return
             
         try:
-            bots_info = self.bot_manager.get_all_bots_info()
+            # Получаем статус системы
+            system_stats = await self.resource_monitor.get_system_stats()
+            available_bots = self.bot_manager.discover_bots()
             
-            if not bots_info:
-                await update.message.reply_text(
-                    "📭 Боты не найдены.\n"
-                    f"Проверьте директорию: `{Config.BOTS_DIR}`",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
+            message = (
+                f"📊 <b>Статус системы</b>\n\n"
+                f"🖥️ <b>Ресурсы:</b>\n"
+                f"CPU: {system_stats['cpu_percent']:.1f}%\n"
+                f"RAM: {system_stats['memory_percent']:.1f}%\n\n"
+                f"🤖 <b>Боты:</b>\n"
+                f"Найдено: {len(available_bots)}\n"
+            )
             
-            # Создаем сообщение со списком ботов
-            message_text = "🤖 **Список ботов:**\n\n"
+            if available_bots:
+                message += "\n<b>Доступные боты:</b>\n"
+                for bot_name in available_bots:
+                    message += f"• {bot_name}\n"
+                    
+        except Exception as e:
+            message = f"❌ Ошибка получения статуса: {e}"
             
-            for bot_info in bots_info:
-                status_emoji = "🟢" if bot_info.is_running else "🔴"
-                status_text = "Запущен" if bot_info.is_running else "Остановлен"
-                
-                message_text += f"{status_emoji} **{bot_info.name}** - {status_text}\n"
-                
-                if bot_info.is_running and bot_info.pid:
-                    message_text += f"   PID: {bot_info.pid}"
-                    if bot_info.memory_mb:
-                        message_text += f", RAM: {bot_info.memory_mb:.1f}MB"
-                    message_text += "\n"
-                
-                message_text += "\n"
+        await update.message.reply_text(message, parse_mode=ParseMode.HTML)
+        
+    async def _cmd_bots(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /bots"""
+        if not self._is_admin(update.effective_user.id):
+            return
             
-            # Создаем inline клавиатуру для каждого бота
+        try:
+            available_bots = self.bot_manager.discover_bots()
+            
+            # Получаем информацию о всех ботах и определяем запущенные
+            running_bots = []
+            for bot_name in available_bots:
+                bot_info = self.bot_manager.get_bot_info(bot_name)
+                if bot_info and bot_info.is_running:
+                    running_bots.append(bot_name)
+            
             keyboard = []
-            for bot_info in bots_info:
-                row = []
-                
-                # Кнопка Старт/Стоп
-                if bot_info.is_running:
-                    row.append(InlineKeyboardButton("⏹️ Стоп", callback_data=f"stop_{bot_info.name}"))
-                else:
-                    row.append(InlineKeyboardButton("▶️ Старт", callback_data=f"start_{bot_info.name}"))
-                
-                # Кнопка Рестарт
-                row.append(InlineKeyboardButton("🔄 Рестарт", callback_data=f"restart_{bot_info.name}"))
-                
-                # Кнопка Инфо
-                row.append(InlineKeyboardButton("ℹ️ Инфо", callback_data=f"info_{bot_info.name}"))
-                
-                keyboard.append(row)
             
-            # Добавляем кнопку обновления списка
-            keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="refresh_list")])
+            # Кнопки для каждого бота
+            for bot_name in available_bots:
+                is_running = bot_name in running_bots
+                status_icon = "🟢" if is_running else "🔴"
+                action = "stop" if is_running else "start"
+                action_text = "Остановить" if is_running else "Запустить"
+                
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{status_icon} {bot_name}",
+                        callback_data=f"bot_info_{bot_name}"
+                    ),
+                    InlineKeyboardButton(
+                        action_text,
+                        callback_data=f"bot_{action}_{bot_name}"
+                    )
+                ])
+                
+            # Кнопка обновления
+            keyboard.append([
+                InlineKeyboardButton("🔄 Обновить", callback_data="bots_refresh")
+            ])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            message = (
+                f"🤖 <b>Управление ботами</b>\n\n"
+                f"Найдено ботов: {len(available_bots)}\n"
+                f"Запущено: {len(running_bots)}\n"
+            )
+            
             await update.message.reply_text(
-                message_text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
+                message,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
             )
             
         except Exception as e:
-            logger.error(f"Ошибка в команде /list: {e}")
-            await update.message.reply_text("❌ Ошибка при получении списка ботов.")
-    
-    async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /status - краткий статус системы"""
-        if not self._is_admin(update.effective_user.id):
-            return
-            
-        try:
-            stats = self.resource_monitor.get_system_stats()
-            bots_info = self.bot_manager.get_all_bots_info()
-            
-            running_bots = sum(1 for bot in bots_info if bot.is_running)
-            total_bots = len(bots_info)
-            
-            status_text = (
-                f"📊 **Статус системы:**\n\n"
-                f"🖥️ **CPU:** {stats.cpu_percent:.1f}%\n"
-                f"💾 **Память:** {stats.memory_percent:.1f}% "
-                f"({stats.memory_available_mb:.0f}MB свободно)\n"
-                f"🤖 **Боты:** {running_bots}/{total_bots} запущено\n\n"
+            await update.message.reply_text(
+                f"❌ Ошибка получения списка ботов: {e}",
+                parse_mode=ParseMode.HTML
             )
             
-            # Проверяем критические состояния
-            memory_critical = self.resource_monitor.check_memory_critical()
-            cpu_critical, _ = self.resource_monitor.check_cpu_critical()
-            
-            if memory_critical or cpu_critical:
-                status_text += "⚠️ **ВНИМАНИЕ:**\n"
-                if memory_critical:
-                    status_text += "🔴 Критически мало памяти!\n"
-                if cpu_critical:
-                    status_text += "🔴 Высокое использование CPU!\n"
-            else:
-                status_text += "✅ Система работает нормально"
-            
-            await update.message.reply_text(status_text, parse_mode=ParseMode.MARKDOWN)
-            
-        except Exception as e:
-            logger.error(f"Ошибка в команде /status: {e}")
-            await update.message.reply_text("❌ Ошибка при получении статуса системы.")
-    
-    async def monitor_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /monitor - подробный отчет мониторинга"""
+    async def _cmd_resources(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /resources"""
         if not self._is_admin(update.effective_user.id):
             return
             
         try:
-            report = self.resource_monitor.get_monitoring_report()
-            await update.message.reply_text(report, parse_mode=ParseMode.MARKDOWN)
+            stats = await self.resource_monitor.get_system_stats()
+            
+            message = (
+                f"📊 <b>Мониторинг ресурсов</b>\n\n"
+                f"🖥️ <b>Система:</b>\n"
+                f"CPU: {stats['cpu_percent']:.1f}%\n"
+                f"RAM: {stats['memory_percent']:.1f}%\n"
+                f"Доступно RAM: {stats['memory_available_mb']:.0f}MB\n"
+                f"Всего RAM: {stats['memory_total_mb']:.0f}MB\n\n"
+            )
+            
+            if stats.get('top_processes'):
+                message += "🔝 <b>Топ процессов по памяти:</b>\n"
+                for proc in stats['top_processes'][:5]:
+                    message += f"• {proc.name}: {proc.memory_mb:.1f}MB\n"
+                    
+            keyboard = [[
+                InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                message,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
             
         except Exception as e:
-            logger.error(f"Ошибка в команде /monitor: {e}")
-            await update.message.reply_text("❌ Ошибка при получении отчета мониторинга.")
-    
-    async def cleanup_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /cleanup - экстренная очистка памяти"""
+            await update.message.reply_text(
+                f"❌ Ошибка получения статистики ресурсов: {e}",
+                parse_mode=ParseMode.HTML
+            )
+            
+    async def _cmd_logs(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /logs"""
         if not self._is_admin(update.effective_user.id):
             return
             
         try:
-            await update.message.reply_text("🧹 Запускаю экстренную очистку памяти...")
+            # Получаем последние строки лога
+            log_lines = []
+            log_file = "logs/sentinel.log"
             
-            success = self.resource_monitor.emergency_memory_cleanup()
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    log_lines = lines[-20:]  # Последние 20 строк
+            except FileNotFoundError:
+                log_lines = ["Лог файл не найден"]
+                
+            message = "📋 <b>Последние записи лога:</b>\n\n"
+            message += "<code>" + "".join(log_lines) + "</code>"
             
-            if success:
-                stats = self.resource_monitor.get_system_stats()
-                result_text = (
-                    f"✅ **Экстренная очистка завершена!**\n\n"
-                    f"💾 Доступно памяти: {stats.memory_available_mb:.0f}MB\n"
-                    f"📊 Использование: {stats.memory_percent:.1f}%"
-                )
-            else:
-                result_text = "❌ **Экстренная очистка не помогла!**\nТребуется ручное вмешательство."
-            
-            await update.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
+            # Ограничиваем длину сообщения
+            if len(message) > 4000:
+                message = message[:4000] + "...</code>"
+                
+            await update.message.reply_text(message, parse_mode=ParseMode.HTML)
             
         except Exception as e:
-            logger.error(f"Ошибка в команде /cleanup: {e}")
-            await update.message.reply_text("❌ Ошибка при выполнении очистки памяти.")
-    
-    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик нажатий на inline кнопки"""
+            await update.message.reply_text(
+                f"❌ Ошибка получения логов: {e}",
+                parse_mode=ParseMode.HTML
+            )
+            
+    async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка callback запросов"""
         query = update.callback_query
         await query.answer()
         
         if not self._is_admin(query.from_user.id):
             return
             
+        data = query.data
+        
         try:
-            callback_data = query.data
-            action, bot_name = callback_data.split('_', 1)
-            
-            if action == "start":
-                await self._handle_start_bot(query, bot_name)
-            elif action == "stop":
-                await self._handle_stop_bot(query, bot_name)
-            elif action == "restart":
-                await self._handle_restart_bot(query, bot_name)
-            elif action == "info":
-                await self._handle_bot_info(query, bot_name)
-            elif callback_data == "refresh_list":
-                await self._handle_refresh_list(query)
-                
-        except Exception as e:
-            logger.error(f"Ошибка в обработчике кнопок: {e}")
-            await query.edit_message_text("❌ Ошибка при выполнении действия.")
-    
-    async def _handle_start_bot(self, query, bot_name: str):
-        """Обработка запуска бота"""
-        await query.edit_message_text(f"▶️ Запускаю бота {bot_name}...")
-        
-        success = self.bot_manager.start_bot(bot_name)
-        
-        if success:
-            await query.edit_message_text(f"✅ Бот {bot_name} успешно запущен!")
-        else:
-            await query.edit_message_text(f"❌ Ошибка при запуске бота {bot_name}")
-    
-    async def _handle_stop_bot(self, query, bot_name: str):
-        """Обработка остановки бота"""
-        await query.edit_message_text(f"⏹️ Останавливаю бота {bot_name}...")
-        
-        success = self.bot_manager.stop_bot(bot_name)
-        
-        if success:
-            await query.edit_message_text(f"✅ Бот {bot_name} успешно остановлен!")
-        else:
-            await query.edit_message_text(f"❌ Ошибка при остановке бота {bot_name}")
-    
-    async def _handle_restart_bot(self, query, bot_name: str):
-        """Обработка перезапуска бота"""
-        await query.edit_message_text(f"🔄 Перезапускаю бота {bot_name}...")
-        
-        success = self.bot_manager.restart_bot(bot_name)
-        
-        if success:
-            await query.edit_message_text(f"✅ Бот {bot_name} успешно перезапущен!")
-        else:
-            await query.edit_message_text(f"❌ Ошибка при перезапуске бота {bot_name}")
-    
-    async def _handle_bot_info(self, query, bot_name: str):
-        """Обработка запроса информации о боте"""
-        bot_info = self.bot_manager.get_bot_info(bot_name)
-        
-        if not bot_info:
-            await query.edit_message_text(f"❌ Информация о боте {bot_name} недоступна")
-            return
-        
-        info_text = f"ℹ️ **Информация о боте {bot_name}:**\n\n"
-        
-        # Статус
-        status_emoji = "🟢" if bot_info.is_running else "🔴"
-        status_text = "Запущен" if bot_info.is_running else "Остановлен"
-        info_text += f"**Статус:** {status_emoji} {status_text}\n"
-        
-        # PID и ресурсы
-        if bot_info.is_running and bot_info.pid:
-            info_text += f"**PID:** {bot_info.pid}\n"
-            
-            if bot_info.cpu_percent is not None:
-                info_text += f"**CPU:** {bot_info.cpu_percent:.1f}%\n"
-                
-            if bot_info.memory_mb is not None:
-                info_text += f"**RAM:** {bot_info.memory_mb:.1f}MB\n"
-        
-        # Размер логов
-        if bot_info.logs_size_mb is not None:
-            info_text += f"**Размер логов:** {bot_info.logs_size_mb:.1f}MB\n"
-        
-        # Git информация
-        if bot_info.last_commit:
-            info_text += f"**Последний коммит:** `{bot_info.last_commit}`\n"
-            
-        if bot_info.last_commit_date:
-            info_text += f"**Дата коммита:** {bot_info.last_commit_date}\n"
-        
-        # Путь к боту
-        info_text += f"**Путь:** `{bot_info.path}`"
-        
-        # Кнопка "Назад к списку"
-        keyboard = [[InlineKeyboardButton("🔙 Назад к списку", callback_data="refresh_list")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            info_text,
-            parse_mode=ParseMode.MARKDOWN,
-            reply_markup=reply_markup
-        )
-    
-    async def _handle_refresh_list(self, query):
-        """Обработка обновления списка ботов"""
-        try:
-            bots_info = self.bot_manager.get_all_bots_info()
-            
-            if not bots_info:
-                await query.edit_message_text(
-                    "📭 Боты не найдены.\n"
-                    f"Проверьте директорию: `{Config.BOTS_DIR}`",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
-            
-            # Создаем обновленное сообщение
-            message_text = "🤖 **Список ботов:** (обновлено)\n\n"
-            
-            for bot_info in bots_info:
-                status_emoji = "🟢" if bot_info.is_running else "🔴"
-                status_text = "Запущен" if bot_info.is_running else "Остановлен"
-                
-                message_text += f"{status_emoji} **{bot_info.name}** - {status_text}\n"
-                
-                if bot_info.is_running and bot_info.pid:
-                    message_text += f"   PID: {bot_info.pid}"
-                    if bot_info.memory_mb:
-                        message_text += f", RAM: {bot_info.memory_mb:.1f}MB"
-                    message_text += "\n"
-                
-                message_text += "\n"
-            
-            # Создаем обновленную клавиатуру
-            keyboard = []
-            for bot_info in bots_info:
-                row = []
-                
-                if bot_info.is_running:
-                    row.append(InlineKeyboardButton("⏹️ Стоп", callback_data=f"stop_{bot_info.name}"))
+            if data.startswith("bot_start_"):
+                bot_name = data.replace("bot_start_", "")
+                result = self.bot_manager.start_bot(bot_name)
+                if result:
+                    await query.edit_message_text(
+                        f"✅ Бот {bot_name} запущен",
+                        parse_mode=ParseMode.HTML
+                    )
                 else:
-                    row.append(InlineKeyboardButton("▶️ Старт", callback_data=f"start_{bot_info.name}"))
+                    await query.edit_message_text(
+                        f"❌ Ошибка запуска бота {bot_name}",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+            elif data.startswith("bot_stop_"):
+                bot_name = data.replace("bot_stop_", "")
+                result = self.bot_manager.stop_bot(bot_name)
+                if result:
+                    await query.edit_message_text(
+                        f"✅ Бот {bot_name} остановлен",
+                        parse_mode=ParseMode.HTML
+                    )
+                else:
+                    await query.edit_message_text(
+                        f"❌ Ошибка остановки бота {bot_name}",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
+            elif data.startswith("bot_info_"):
+                bot_name = data.replace("bot_info_", "")
+                bot_info = self.bot_manager.get_bot_info(bot_name)
                 
-                row.append(InlineKeyboardButton("🔄 Рестарт", callback_data=f"restart_{bot_info.name}"))
-                row.append(InlineKeyboardButton("ℹ️ Инфо", callback_data=f"info_{bot_info.name}"))
+                if bot_info:
+                    message = (
+                        f"🤖 <b>Информация о боте {bot_name}</b>\n\n"
+                        f"Статус: {'🟢 Запущен' if bot_info.is_running else '🔴 Остановлен'}\n"
+                        f"PID: {bot_info.pid or 'N/A'}\n"
+                        f"Память: {bot_info.memory_mb:.1f}MB\n" if bot_info.memory_mb else ""
+                        f"Путь: {bot_info.path}\n"
+                    )
+                else:
+                    message = f"🤖 <b>Бот {bot_name}</b>\n\nБот не найден"
+                    
+                await query.edit_message_text(message, parse_mode=ParseMode.HTML)
                 
-                keyboard.append(row)
-            
-            keyboard.append([InlineKeyboardButton("🔄 Обновить список", callback_data="refresh_list")])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                message_text,
-                parse_mode=ParseMode.MARKDOWN,
-                reply_markup=reply_markup
-            )
-            
+            elif data == "bots_refresh":
+                # Для обновления создаем новое сообщение вместо редактирования
+                available_bots = self.bot_manager.discover_bots()
+                
+                # Получаем информацию о всех ботах и определяем запущенные
+                running_bots = []
+                for bot_name in available_bots:
+                    bot_info = self.bot_manager.get_bot_info(bot_name)
+                    if bot_info and bot_info.is_running:
+                        running_bots.append(bot_name)
+                
+                keyboard = []
+                
+                # Кнопки для каждого бота
+                for bot_name in available_bots:
+                    is_running = bot_name in running_bots
+                    status_icon = "🟢" if is_running else "🔴"
+                    action = "stop" if is_running else "start"
+                    action_text = "Остановить" if is_running else "Запустить"
+                    
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"{status_icon} {bot_name}",
+                            callback_data=f"bot_info_{bot_name}"
+                        ),
+                        InlineKeyboardButton(
+                            action_text,
+                            callback_data=f"bot_{action}_{bot_name}"
+                        )
+                    ])
+                    
+                # Кнопка обновления
+                keyboard.append([
+                    InlineKeyboardButton("🔄 Обновить", callback_data="bots_refresh")
+                ])
+                
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                # Добавляем временную метку для уникальности сообщения
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                
+                message = (
+                    f"🤖 <b>Управление ботами</b>\n\n"
+                    f"Найдено ботов: {len(available_bots)}\n"
+                    f"Запущено: {len(running_bots)}\n"
+                    f"<i>Обновлено: {timestamp}</i>"
+                )
+                
+                try:
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    # Если не удалось отредактировать, отправляем новое сообщение
+                    await query.message.reply_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                
+            elif data == "resources_refresh":
+                # Для callback нужно создать fake update с message
+                fake_update = type('obj', (object,), {
+                    'effective_user': update.effective_user,
+                    'message': type('obj', (object,), {
+                        'reply_text': query.edit_message_text
+                    })()
+                })()
+                await self._cmd_resources(fake_update, context)
+                
         except Exception as e:
-            logger.error(f"Ошибка при обновлении списка: {e}")
-            await query.edit_message_text("❌ Ошибка при обновлении списка ботов.")
-    
-    def setup_application(self):
-        """Настройка Telegram приложения"""
-        self.application = Application.builder().token(Config.TELEGRAM_BOT_TOKEN).build()
-        
-        # Добавляем обработчики команд
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(CommandHandler("list", self.list_command))
-        self.application.add_handler(CommandHandler("status", self.status_command))
-        self.application.add_handler(CommandHandler("monitor", self.monitor_command))
-        self.application.add_handler(CommandHandler("cleanup", self.cleanup_command))
-        
-        # Добавляем обработчик callback кнопок
-        self.application.add_handler(CallbackQueryHandler(self.button_callback))
-        
-        logger.info("Telegram-бот настроен и готов к работе")
-    
-    async def start_bot(self):
-        """Запуск Telegram-бота"""
-        if not self.application:
-            self.setup_application()
-            
-        logger.info("Запускаю Telegram-бота...")
-        await self.application.initialize()
-        await self.application.start()
-        await self.application.updater.start_polling()
-        
-        logger.info("Telegram-бот запущен и работает")
-    
-    async def stop_bot(self):
-        """Остановка Telegram-бота"""
-        if self.application:
-            logger.info("Останавливаю Telegram-бота...")
-            await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
-            logger.info("Telegram-бот остановлен")
+            logger.error(f"Ошибка обработки callback {data}: {e}")
+            await query.edit_message_text(
+                f"❌ Ошибка обработки команды: {e}",
+                parse_mode=ParseMode.HTML
+            )

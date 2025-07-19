@@ -2,6 +2,7 @@
 Модуль мониторинга системных ресурсов для SaldoranBotSentinel
 """
 
+import asyncio
 import psutil
 import subprocess
 import time
@@ -9,8 +10,10 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
-from .config import Config
-from .logger import logger
+from config import Config
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -44,8 +47,25 @@ class ResourceMonitor:
         self.min_free_ram_mb = Config.MIN_FREE_RAM_MB
         self.monitoring_interval = Config.MONITORING_INTERVAL
         self._last_check_time = None
+        self._monitoring_task = None
         
-    def get_system_stats(self) -> SystemStats:
+    async def start(self):
+        """Запуск мониторинга ресурсов"""
+        logger.info("Запуск мониторинга ресурсов...")
+        # Здесь можно добавить периодический мониторинг если нужно
+        # self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        
+    async def stop(self):
+        """Остановка мониторинга ресурсов"""
+        logger.info("Остановка мониторинга ресурсов...")
+        if self._monitoring_task:
+            self._monitoring_task.cancel()
+            try:
+                await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+        
+    async def get_system_stats(self) -> Dict:
         """Получение статистики системы"""
         # CPU статистика
         cpu_percent = psutil.cpu_percent(interval=1)
@@ -60,14 +80,14 @@ class ResourceMonitor:
         # Топ процессов по использованию памяти
         top_processes = self._get_top_memory_processes(limit=10)
         
-        return SystemStats(
-            cpu_percent=cpu_percent,
-            memory_total_mb=memory_total_mb,
-            memory_available_mb=memory_available_mb,
-            memory_used_mb=memory_used_mb,
-            memory_percent=memory_percent,
-            top_processes=top_processes
-        )
+        return {
+            'cpu_percent': cpu_percent,
+            'memory_total_mb': memory_total_mb,
+            'memory_available_mb': memory_available_mb,
+            'memory_used_mb': memory_used_mb,
+            'memory_percent': memory_percent,
+            'top_processes': top_processes
+        }
     
     def _get_top_memory_processes(self, limit: int = 10) -> List[ProcessInfo]:
         """Получение топ процессов по использованию памяти"""

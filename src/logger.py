@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from .config import Config
+from config import Config
 
 
 class DailyRotatingLogger:
@@ -103,6 +103,10 @@ class DailyRotatingLogger:
         self._check_date_rotation()
         self.logger.debug(message)
 
+
+def get_logger(name: str = "SentinelBot") -> DailyRotatingLogger:
+    """Получение экземпляра логгера"""
+    return DailyRotatingLogger(name)
 
 # Глобальный экземпляр логгера
 logger = DailyRotatingLogger()

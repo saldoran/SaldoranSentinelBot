@@ -1,254 +1,178 @@
-"""
-Главный модуль SaldoranBotSentinel
-"""
-
-import asyncio
-import signal
+import os
 import sys
-from typing import Optional
-from datetime import datetime
+import signal
+import asyncio
+import threading
+from dotenv import load_dotenv
 
-from .config import Config
-from .logger import logger
-from .bot_manager import BotManager
-from .resource_monitor import ResourceMonitor
-from .telegram_bot import SentinelTelegramBot
+from config import Config
+from logger import get_logger
+from bot_manager import BotManager
+from resource_monitor import ResourceMonitor
+from telegram_bot import TelegramBot
 
+load_dotenv()
+logger = get_logger(__name__)
+
+# Глобальная переменная для отслеживания кода выхода
+exit_code = 0
 
 class SentinelService:
-    """Главный сервис SaldoranBotSentinel"""
-    
     def __init__(self):
-        self.bot_manager: Optional[BotManager] = None
-        self.resource_monitor: Optional[ResourceMonitor] = None
-        self.telegram_bot: Optional[SentinelTelegramBot] = None
-        self.monitoring_task: Optional[asyncio.Task] = None
-        self.running = False
-        
-    async def initialize(self):
-        """Инициализация всех компонентов сервиса"""
+        logger.info("Инициализация SentinelService...")
         try:
-            logger.info("🚀 Инициализация SaldoranBotSentinel...")
-            
-            # Валидация конфигурации
-            Config.validate()
-            logger.info("✅ Конфигурация валидна")
-            
-            # Создание необходимых директорий
-            Config.create_directories()
-            logger.info("✅ Директории созданы")
-            
-            # Инициализация компонентов
+            logger.info("Загрузка конфигурации...")
+            self.config = Config()
+            logger.info("Инициализация BotManager...")
             self.bot_manager = BotManager()
-            logger.info("✅ BotManager инициализирован")
-            
+            logger.info("Инициализация ResourceMonitor...")
             self.resource_monitor = ResourceMonitor()
-            logger.info("✅ ResourceMonitor инициализирован")
-            
-            self.telegram_bot = SentinelTelegramBot(self.bot_manager, self.resource_monitor)
-            self.telegram_bot.setup_application()
-            logger.info("✅ TelegramBot инициализирован")
-            
-            logger.info("🎉 Все компоненты успешно инициализированы!")
-            
+            logger.info("Инициализация TelegramBot...")
+            self.telegram_bot = TelegramBot(self.config, self.bot_manager, self.resource_monitor)
+            self.running = False
+            logger.info("SentinelService успешно инициализирован")
         except Exception as e:
-            logger.critical(f"❌ Критическая ошибка при инициализации: {e}")
+            logger.error(f"Ошибка при инициализации SentinelService: {e}")
             raise
-    
-    async def start_monitoring_loop(self):
-        """Запуск цикла мониторинга ресурсов"""
-        logger.info(f"🔄 Запуск цикла мониторинга (интервал: {Config.MONITORING_INTERVAL}с)")
         
-        while self.running:
-            try:
-                # Выполняем мониторинг
-                monitoring_result = self.resource_monitor.monitor_resources()
-                
-                # Логируем результаты мониторинга
-                actions = monitoring_result.get('actions_taken', [])
-                if actions:
-                    logger.warning(f"Выполнены действия мониторинга: {', '.join(actions)}")
-                
-                # Если была экстренная очистка памяти, уведомляем админа
-                if 'emergency_memory_cleanup' in actions:
-                    await self._notify_admin_emergency_cleanup(monitoring_result)
-                
-                # Ждем до следующей проверки
-                await asyncio.sleep(Config.MONITORING_INTERVAL)
-                
-            except Exception as e:
-                logger.error(f"Ошибка в цикле мониторинга: {e}")
-                await asyncio.sleep(Config.MONITORING_INTERVAL)
-    
-    async def _notify_admin_emergency_cleanup(self, monitoring_result):
-        """Уведомление администратора об экстренной очистке памяти"""
-        try:
-            if self.telegram_bot and self.telegram_bot.application:
-                stats = monitoring_result['stats']
-                timestamp = monitoring_result['timestamp']
-                
-                message = (
-                    f"🚨 **ЭКСТРЕННАЯ ОЧИСТКА ПАМЯТИ**\n\n"
-                    f"⏰ Время: {timestamp.strftime('%H:%M:%S %d.%m.%Y')}\n"
-                    f"💾 Доступно памяти: {stats.memory_available_mb:.0f}MB\n"
-                    f"📊 Использование: {stats.memory_percent:.1f}%\n\n"
-                    f"Система автоматически завершила процессы-пожиратели памяти "
-                    f"и очистила кэш."
-                )
-                
-                await self.telegram_bot.application.bot.send_message(
-                    chat_id=Config.TELEGRAM_ADMIN_ID,
-                    text=message,
-                    parse_mode='Markdown'
-                )
-                
-        except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления админу: {e}")
-    
     async def start(self):
-        """Запуск сервиса"""
+        """Запуск всех компонентов сервиса"""
         try:
-            self.running = True
-            logger.info("🚀 Запуск SaldoranBotSentinel...")
+            logger.info("Запуск SaldoranSentinelBot...")
             
-            # Инициализируем компоненты
-            await self.initialize()
+            # Запускаем мониторинг ресурсов
+            await self.resource_monitor.start()
             
-            # Запускаем Telegram-бота
-            await self.telegram_bot.start_bot()
-            
-            # Запускаем цикл мониторинга в отдельной задаче
-            self.monitoring_task = asyncio.create_task(self.start_monitoring_loop())
+            # Запускаем Telegram бота
+            await self.telegram_bot.start()
             
             # Отправляем уведомление о запуске
-            await self._notify_startup()
+            await self.telegram_bot.send_startup_notification()
             
-            logger.info("✅ SaldoranBotSentinel успешно запущен!")
-            
-            # Ждем завершения работы
-            await self.monitoring_task
+            self.running = True
+            logger.info("SaldoranSentinelBot успешно запущен")
             
         except Exception as e:
-            logger.critical(f"❌ Критическая ошибка при запуске сервиса: {e}")
-            await self.stop()
+            logger.error(f"Ошибка при запуске сервиса: {e}")
             raise
-    
-    async def _notify_startup(self):
-        """Уведомление о запуске сервиса"""
+            
+    async def shutdown(self, exit_code_param=0):
+        """Корректное завершение работы сервиса"""
         try:
-            if self.telegram_bot and self.telegram_bot.application:
-                # Получаем статистику системы
-                stats = self.resource_monitor.get_system_stats()
-                bots_info = self.bot_manager.get_all_bots_info()
-                
-                running_bots = sum(1 for bot in bots_info if bot.is_running)
-                total_bots = len(bots_info)
-                
-                startup_message = (
-                    f"🟢 **SaldoranBotSentinel запущен!**\n\n"
-                    f"⏰ Время запуска: {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n"
-                    f"🖥️ CPU: {stats.cpu_percent:.1f}%\n"
-                    f"💾 Память: {stats.memory_percent:.1f}% "
-                    f"({stats.memory_available_mb:.0f}MB свободно)\n"
-                    f"🤖 Боты: {running_bots}/{total_bots} запущено\n\n"
-                    f"Мониторинг активен каждые {Config.MONITORING_INTERVAL}с"
-                )
-                
-                await self.telegram_bot.application.bot.send_message(
-                    chat_id=Config.TELEGRAM_ADMIN_ID,
-                    text=startup_message,
-                    parse_mode='Markdown'
-                )
-                
-        except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления о запуске: {e}")
-    
-    async def stop(self):
-        """Остановка сервиса"""
-        logger.info("🛑 Остановка SaldoranBotSentinel...")
-        
-        self.running = False
-        
-        # Останавливаем задачу мониторинга
-        if self.monitoring_task and not self.monitoring_task.done():
-            self.monitoring_task.cancel()
+            global exit_code
+            logger.info("Начало процедуры shutdown...")
+            
+            # Устанавливаем код выхода
+            exit_code = exit_code_param
+            logger.info(f"Установлен код выхода: {exit_code}")
+            
+            self.running = False
+            
+            # Отправляем уведомление о завершении
             try:
-                await self.monitoring_task
-            except asyncio.CancelledError:
-                pass
-        
-        # Останавливаем Telegram-бота
-        if self.telegram_bot:
-            await self.telegram_bot.stop_bot()
-        
-        # Отправляем уведомление об остановке
-        await self._notify_shutdown()
-        
-        logger.info("✅ SaldoranBotSentinel остановлен")
-    
-    async def _notify_shutdown(self):
-        """Уведомление об остановке сервиса"""
-        try:
-            if self.telegram_bot and self.telegram_bot.application:
-                shutdown_message = (
-                    f"🔴 **SaldoranBotSentinel остановлен**\n\n"
-                    f"⏰ Время остановки: {datetime.now().strftime('%H:%M:%S %d.%m.%Y')}\n"
-                    f"Мониторинг системы приостановлен."
-                )
+                await self.telegram_bot.send_shutdown_notification()
+                logger.info("Уведомление о завершении отправлено в Telegram")
+            except Exception as e:
+                logger.warning(f"Не удалось отправить уведомление о shutdown: {e}")
+            
+            # Останавливаем компоненты
+            if hasattr(self, 'resource_monitor'):
+                await self.resource_monitor.stop()
                 
-                await self.telegram_bot.application.bot.send_message(
-                    chat_id=Config.TELEGRAM_ADMIN_ID,
-                    text=shutdown_message,
-                    parse_mode='Markdown'
-                )
+            if hasattr(self, 'telegram_bot'):
+                await self.telegram_bot.stop()
                 
+            # Отменяем задачи
+            pending = [t for t in asyncio.all_tasks() 
+                      if t is not asyncio.current_task()]
+            
+            if pending:
+                logger.info(f"Отменяем {len(pending)} задач...")
+                for task in pending:
+                    task.cancel()
+                
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*pending, return_exceptions=True),
+                        timeout=5.0
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning("Timeout waiting for tasks to cancel")
+                    
         except Exception as e:
-            logger.error(f"Ошибка при отправке уведомления об остановке: {e}")
+            logger.error(f"Ошибка при shutdown: {e}")
+        finally:
+            logger.info("Shutdown завершен")
 
+async def start_service():
+    """Инициализация и запуск сервиса"""
+    service = SentinelService()
+    await service.start()
+    return service
 
-# Глобальный экземпляр сервиса
-sentinel_service = SentinelService()
-
-
-def signal_handler(signum, frame):
-    """Обработчик сигналов для graceful shutdown"""
-    logger.info(f"Получен сигнал {signum}, начинаю остановку...")
+def run_service():
+    """Основная функция запуска сервиса"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     
-    # Создаем новый event loop если его нет
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    # События для координации завершения
+    shutdown_event = asyncio.Event()
+    shutdown_complete = asyncio.Event()
+    service = None
     
-    # Запускаем остановку сервиса
-    loop.create_task(sentinel_service.stop())
-
-
-async def main():
-    """Главная функция"""
+    async def shutdown_tasks():
+        try:
+            logger.info("shutdown_tasks: начинаем завершение")
+            if service:
+                await service.shutdown(0)
+            shutdown_complete.set()
+        finally:
+            loop.stop()
+    
+    def handle_signals(sig_name=None):
+        if shutdown_event.is_set():
+            logger.info(f"Игнорирую повторный сигнал завершения {sig_name}")
+            return
+        shutdown_event.set()
+        logger.info(f"Получен сигнал завершения: {sig_name}")
+        loop.create_task(shutdown_tasks())
+    
     try:
-        # Настраиваем обработчики сигналов
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        # Регистрируем обработчики сигналов
+        loop.add_signal_handler(signal.SIGTERM, lambda: handle_signals("SIGTERM"))
+        loop.add_signal_handler(signal.SIGINT, lambda: handle_signals("SIGINT"))
         
         # Запускаем сервис
-        await sentinel_service.start()
+        service = loop.run_until_complete(start_service())
+        loop.run_forever()
         
-    except KeyboardInterrupt:
-        logger.info("Получен сигнал прерывания от пользователя")
-        await sentinel_service.stop()
     except Exception as e:
-        logger.critical(f"Неожиданная ошибка: {e}")
-        await sentinel_service.stop()
-        sys.exit(1)
-
+        logger.exception("Service crashed: %s", e)
+        if not shutdown_event.is_set():
+            loop.run_until_complete(shutdown_tasks())
+    finally:
+        try:
+            # Ждем завершения shutdown если он еще не завершен
+            if not shutdown_complete.is_set() and loop.is_running():
+                loop.run_until_complete(shutdown_complete.wait())
+            
+            # Отменяем оставшиеся задачи
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            
+            # Закрываем loop
+            loop.run_until_complete(loop.shutdown_asyncgens())
+            loop.close()
+        except Exception as e:
+            logger.error(f"Ошибка при закрытии loop: {e}")
+        
+        logger.info("Программа завершена")
+        # Используем глобальную переменную exit_code
+        os._exit(exit_code)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Программа прервана пользователем")
-    except Exception as e:
-        logger.critical(f"Критическая ошибка при запуске: {e}")
-        sys.exit(1)
+    run_service()

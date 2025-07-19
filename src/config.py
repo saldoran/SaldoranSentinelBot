@@ -3,6 +3,7 @@
 """
 
 import os
+import getpass
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -22,11 +23,12 @@ class Config:
     MONITORING_INTERVAL = int(os.getenv('MONITORING_INTERVAL', 60))
     
     # Paths
-    BOTS_DIR = Path(os.path.expanduser(os.getenv('BOTS_DIR', '~/bots')))
-    LOGS_DIR = Path(os.getenv('LOGS_DIR', './logs'))
+    _base_dir = Path(__file__).parent.parent  # Корневая директория проекта
+    BOTS_DIR = _base_dir / os.getenv('BOTS_DIR', 'test_bot').lstrip('./')
+    LOGS_DIR = _base_dir / os.getenv('LOGS_DIR', 'logs').lstrip('./')
     
     # System Configuration
-    TARGET_USER = os.getenv('TARGET_USER', 'ubuntu')
+    TARGET_USER = os.getenv('TARGET_USER', getpass.getuser())
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
     @classmethod
