@@ -40,18 +40,19 @@ pip install -r requirements.txt
 
 ### 3. Настройка конфигурации
 
-Отредактируйте файл `.env`:
+Создайте файл `.env` на основе примера:
 
 ```bash
+cp .env.example .env
 nano .env
 ```
 
-Убедитесь, что все параметры настроены правильно:
+Настройте параметры в `.env`:
 
 ```env
 # Telegram Bot Configuration
-TELEGRAM_BOT_TOKEN=7093343467:AAE-1tL8Dp05aOHBSMhs20sQa0C_7NKVE_k
-TELEGRAM_ADMIN_ID=274343007
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_ADMIN_ID=your_admin_user_id
 
 # Resource Monitoring Limits
 MAX_CPU_PERCENT=95
@@ -66,6 +67,8 @@ LOGS_DIR=./logs
 TARGET_USER=ubuntu
 LOG_LEVEL=INFO
 ```
+
+**Важно**: Замените `your_bot_token_here` на реальный токен вашего Telegram-бота и `your_admin_user_id` на ваш Telegram ID.
 
 ### 4. Создание директории для ботов
 
@@ -277,6 +280,40 @@ SaldoranSentinelBot/
 ├── requirements.txt
 └── README.md
 ```
+
+## 🍎 Локальное тестирование на macOS
+
+Для тестирования на macOS создайте `.env` файл с настройками:
+
+```env
+# Telegram Bot Configuration  
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_ADMIN_ID=your_admin_user_id
+
+# Resource Monitoring Limits
+MAX_CPU_PERCENT=95
+MIN_FREE_RAM_MB=100
+MONITORING_INTERVAL=60
+
+# Paths (для локального тестирования)
+BOTS_DIR=./test_bot
+LOGS_DIR=./logs
+
+# System Configuration (ваш пользователь macOS)
+TARGET_USER=your_macos_username
+LOG_LEVEL=INFO
+```
+
+Затем запустите:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python -m src.main
+```
+
+**Примечание**: Команда очистки кэша `sudo sysctl -w vm.drop_caches=3` не работает на macOS, но остальной функционал будет работать полностью.
 
 ## 🤝 Поддержка
 
