@@ -24,8 +24,19 @@ class Config:
     
     # Paths
     _base_dir = Path(__file__).parent.parent  # Корневая директория проекта
-    BOTS_DIR = _base_dir / os.getenv('BOTS_DIR', 'test_bot').lstrip('./')
-    LOGS_DIR = _base_dir / os.getenv('LOGS_DIR', 'logs').lstrip('./')
+    
+    # Обработка путей - если путь абсолютный, используем как есть, иначе относительно base_dir
+    _bots_dir_env = os.getenv('BOTS_DIR', 'test_bot')
+    if Path(_bots_dir_env).is_absolute():
+        BOTS_DIR = Path(_bots_dir_env)
+    else:
+        BOTS_DIR = _base_dir / _bots_dir_env.lstrip('./')
+    
+    _logs_dir_env = os.getenv('LOGS_DIR', 'logs')
+    if Path(_logs_dir_env).is_absolute():
+        LOGS_DIR = Path(_logs_dir_env)
+    else:
+        LOGS_DIR = _base_dir / _logs_dir_env.lstrip('./')
     
     # System Configuration
     TARGET_USER = os.getenv('TARGET_USER', getpass.getuser())
