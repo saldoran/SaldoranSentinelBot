@@ -370,8 +370,7 @@ class ResourceMonitor:
         
         # Логируем текущее состояние
         logger.info(f"Мониторинг: CPU={stats.cpu_percent:.1f}%, "
-                   f"RAM={stats.memory_percent:.1f}% "
-                   f"({stats.memory_available_mb:.1f}MB свободно)")
+                   f"RAM={stats.memory_used_mb:.0f}/{stats.memory_total_mb:.0f}MB ({stats.memory_percent:.1f}%)")
         
         actions_taken = []
         
@@ -404,9 +403,8 @@ class ResourceMonitor:
         
         report = f"📊 **Мониторинг системы**\n\n"
         report += f"🖥️ **CPU:** {stats.cpu_percent:.1f}%\n"
-        report += f"💾 **Память:** {stats.memory_percent:.1f}% "
-        report += f"({stats.memory_available_mb:.0f}MB свободно)\n"
-        report += f"📈 **Всего памяти:** {stats.memory_total_mb:.0f}MB\n\n"
+        report += f"💾 **Память:** {stats.memory_used_mb:.0f}/{stats.memory_total_mb:.0f}MB ({stats.memory_percent:.1f}%)\n"
+        report += f"🆓 **Свободно:** {stats.memory_available_mb:.0f}MB\n\n"
         
         if stats.top_processes:
             report += "🔝 **Топ процессов по памяти:**\n"
