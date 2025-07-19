@@ -93,6 +93,16 @@ class ResourceMonitor:
         """Получение топ процессов по использованию памяти"""
         processes = []
         
+        def safe_encode_string(s: str) -> str:
+            """Безопасное кодирование строки для избежания ошибок с surrogates"""
+            if not s:
+                return ""
+            try:
+                # Удаляем проблемные символы и кодируем в UTF-8
+                return s.encode('utf-8', errors='ignore').decode('utf-8')
+            except Exception:
+                return "unknown"
+        
         try:
             for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cmdline']):
                 try:
@@ -101,14 +111,18 @@ class ResourceMonitor:
                         continue
                         
                     memory_mb = proc.info['memory_info'].rss / 1024 / 1024
-                    cmdline = ' '.join(proc.info['cmdline'] or [])
+                    
+                    # Безопасно обрабатываем имя процесса и командную строку
+                    process_name = safe_encode_string(proc.info['name'] or "unknown")
+                    cmdline_list = proc.info['cmdline'] or []
+                    cmdline = safe_encode_string(' '.join(str(arg) for arg in cmdline_list))
                     
                     # Получаем CPU процент для процесса
                     cpu_percent = proc.cpu_percent()
                     
                     process_info = ProcessInfo(
                         pid=proc.info['pid'],
-                        name=proc.info['name'],
+                        name=process_name,
                         username=proc.info['username'],
                         cpu_percent=cpu_percent,
                         memory_mb=memory_mb,
