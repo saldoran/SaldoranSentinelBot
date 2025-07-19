@@ -271,7 +271,10 @@ class TelegramBot:
         try:
             # Получаем последние строки лога
             log_lines = []
-            log_file = "logs/sentinel.log"
+            # Формируем имя файла лога на текущую дату
+            from datetime import datetime
+            today = datetime.now().strftime("%d%m%Y")
+            log_file = self.config.LOGS_DIR / f"sentinel_{today}.log"
             
             try:
                 with open(log_file, 'r', encoding='utf-8') as f:
