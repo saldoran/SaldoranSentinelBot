@@ -33,8 +33,9 @@ class BotInfo:
 class BotManager:
     """Менеджер для управления ботами"""
     
-    def __init__(self):
+    def __init__(self, telegram_bot=None):
         self.bots_dir = Config.BOTS_DIR
+        self.telegram_bot = telegram_bot
         self._ensure_bots_directory()
         
     def _ensure_bots_directory(self):
@@ -212,6 +213,14 @@ class BotManager:
             
         return None
     
+    async def _send_telegram_notification(self, message: str):
+        """Отправка уведомления в Telegram"""
+        if self.telegram_bot:
+            try:
+                await self.telegram_bot.send_notification(message)
+            except Exception as e:
+                logger.error(f"Ошибка отправки Telegram уведомления: {e}")
+
     def start_bot(self, bot_name: str) -> bool:
         """Запуск бота"""
         bot_path = self.bots_dir / bot_name
@@ -224,7 +233,22 @@ class BotManager:
         elif run_script.exists() and os.access(run_script, os.X_OK):
             script_to_run = run_script
         else:
-            logger.error(f"Скрипт run_bot или run_bot.sh не найден для бота {bot_name}")
+            error_msg = f"Скрипт run_bot или run_bot.sh не найден для бота {bot_name}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление об ошибке
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"❌ <b>Ошибка запуска бота</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"📁 Скрипт запуска не найден"
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
             
         # Проверяем, не запущен ли уже бот
@@ -244,16 +268,75 @@ class BotManager:
             
             if result.returncode == 0:
                 logger.info(f"Бот {bot_name} успешно запущен")
+                
+                # Отправляем уведомление об успешном запуске
+                if self.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._send_telegram_notification(
+                            f"✅ <b>Бот запущен</b>\n\n"
+                            f"🤖 Бот: {bot_name}\n"
+                            f"🚀 Статус: Успешно запущен"
+                        ))
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления: {e}")
+                
                 return True
             else:
-                logger.error(f"Ошибка запуска бота {bot_name}: {result.stderr}")
+                error_msg = f"Ошибка запуска бота {bot_name}: {result.stderr}"
+                logger.error(error_msg)
+                
+                # Отправляем уведомление об ошибке
+                if self.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._send_telegram_notification(
+                            f"❌ <b>Ошибка запуска бота</b>\n\n"
+                            f"🤖 Бот: {bot_name}\n"
+                            f"📝 Ошибка: {result.stderr[:200]}..."
+                        ))
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления: {e}")
+                
                 return False
                 
         except subprocess.TimeoutExpired:
-            logger.error(f"Таймаут при запуске бота {bot_name}")
+            error_msg = f"Таймаут при запуске бота {bot_name}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление о таймауте
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"⏰ <b>Таймаут запуска бота</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"⚠️ Превышено время ожидания (30 сек)"
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
         except Exception as e:
-            logger.error(f"Исключение при запуске бота {bot_name}: {e}")
+            error_msg = f"Исключение при запуске бота {bot_name}: {e}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление об исключении
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"💥 <b>Критическая ошибка запуска</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"🔥 Исключение: {str(e)[:200]}..."
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
     
     def stop_bot(self, bot_name: str) -> bool:
@@ -268,7 +351,22 @@ class BotManager:
         elif stop_script.exists() and os.access(stop_script, os.X_OK):
             script_to_run = stop_script
         else:
-            logger.error(f"Скрипт stop_bot или stop_bot.sh не найден для бота {bot_name}")
+            error_msg = f"Скрипт stop_bot или stop_bot.sh не найден для бота {bot_name}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление об ошибке
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"❌ <b>Ошибка остановки бота</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"📁 Скрипт остановки не найден"
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
             
         try:
@@ -282,16 +380,75 @@ class BotManager:
             
             if result.returncode == 0:
                 logger.info(f"Бот {bot_name} успешно остановлен")
+                
+                # Отправляем уведомление об успешной остановке
+                if self.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._send_telegram_notification(
+                            f"🛑 <b>Бот остановлен</b>\n\n"
+                            f"🤖 Бот: {bot_name}\n"
+                            f"✅ Статус: Успешно остановлен"
+                        ))
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления: {e}")
+                
                 return True
             else:
-                logger.error(f"Ошибка остановки бота {bot_name}: {result.stderr}")
+                error_msg = f"Ошибка остановки бота {bot_name}: {result.stderr}"
+                logger.error(error_msg)
+                
+                # Отправляем уведомление об ошибке
+                if self.telegram_bot:
+                    import asyncio
+                    try:
+                        loop = asyncio.get_event_loop()
+                        loop.create_task(self._send_telegram_notification(
+                            f"❌ <b>Ошибка остановки бота</b>\n\n"
+                            f"🤖 Бот: {bot_name}\n"
+                            f"📝 Ошибка: {result.stderr[:200]}..."
+                        ))
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки уведомления: {e}")
+                
                 return False
                 
         except subprocess.TimeoutExpired:
-            logger.error(f"Таймаут при остановке бота {bot_name}")
+            error_msg = f"Таймаут при остановке бота {bot_name}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление о таймауте
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"⏰ <b>Таймаут остановки бота</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"⚠️ Превышено время ожидания (30 сек)"
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
         except Exception as e:
-            logger.error(f"Исключение при остановке бота {bot_name}: {e}")
+            error_msg = f"Исключение при остановке бота {bot_name}: {e}"
+            logger.error(error_msg)
+            
+            # Отправляем уведомление об исключении
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    loop.create_task(self._send_telegram_notification(
+                        f"💥 <b>Критическая ошибка остановки</b>\n\n"
+                        f"🤖 Бот: {bot_name}\n"
+                        f"🔥 Исключение: {str(e)[:200]}..."
+                    ))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки уведомления: {e}")
+            
             return False
     
     def restart_bot(self, bot_name: str) -> bool:

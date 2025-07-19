@@ -41,19 +41,46 @@ class SystemStats:
 class ResourceMonitor:
     """Монитор системных ресурсов"""
     
-    def __init__(self):
+    def __init__(self, telegram_bot=None):
         self.target_user = Config.TARGET_USER
         self.max_cpu_percent = Config.MAX_CPU_PERCENT
         self.min_free_ram_mb = Config.MIN_FREE_RAM_MB
         self.monitoring_interval = Config.MONITORING_INTERVAL
         self._last_check_time = None
         self._monitoring_task = None
+        self.telegram_bot = telegram_bot
         
     async def start(self):
         """Запуск мониторинга ресурсов"""
         logger.info("Запуск мониторинга ресурсов...")
-        # Здесь можно добавить периодический мониторинг если нужно
-        # self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        # Запускаем периодический мониторинг
+        self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+        
+    async def _monitoring_loop(self):
+        """Основной цикл мониторинга ресурсов"""
+        logger.info(f"Запуск цикла мониторинга с интервалом {self.monitoring_interval} секунд")
+        
+        while True:
+            try:
+                await asyncio.sleep(self.monitoring_interval)
+                
+                # Проверяем критическое состояние памяти
+                if self.check_memory_critical():
+                    logger.warning("Обнаружено критическое состояние памяти!")
+                    self.emergency_memory_cleanup()
+                
+                # Проверяем критическое использование CPU
+                cpu_critical, cpu_percent = self.check_cpu_critical()
+                if cpu_critical:
+                    logger.warning("Обнаружено критическое использование CPU!")
+                    # CPU уведомление уже отправляется в check_cpu_critical()
+                
+            except asyncio.CancelledError:
+                logger.info("Цикл мониторинга остановлен")
+                break
+            except Exception as e:
+                logger.error(f"Ошибка в цикле мониторинга: {e}")
+                await asyncio.sleep(10)  # Пауза перед повтором при ошибке
         
     async def stop(self):
         """Остановка мониторинга ресурсов"""
@@ -236,27 +263,66 @@ class ResourceMonitor:
             logger.warning(f"КРИТИЧЕСКОЕ использование CPU! "
                           f"Текущее: {cpu_percent:.1f}%, "
                           f"Максимум: {self.max_cpu_percent}%")
+            
+            # Отправляем уведомление в Telegram
+            if self.telegram_bot:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    message = (
+                        f"🔥 Критическое использование CPU!\n\n"
+                        f"📊 Текущее: {cpu_percent:.1f}%\n"
+                        f"⚠️ Максимум: {self.max_cpu_percent}%\n\n"
+                        f"🔍 Проверьте процессы командой /resources"
+                    )
+                    loop.create_task(self._send_telegram_alert(message))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки CPU уведомления: {e}")
         
         return is_critical, cpu_percent
     
+    async def _send_telegram_alert(self, message: str):
+        """Отправка критического уведомления в Telegram"""
+        if self.telegram_bot:
+            try:
+                alert_message = f"🚨 <b>КРИТИЧЕСКОЕ УВЕДОМЛЕНИЕ</b>\n\n{message}"
+                await self.telegram_bot.send_notification(alert_message)
+            except Exception as e:
+                logger.error(f"Ошибка отправки Telegram уведомления: {e}")
+
     def emergency_memory_cleanup(self) -> bool:
         """Экстренная очистка памяти"""
         logger.critical("ЗАПУСК ЭКСТРЕННОЙ ОЧИСТКИ ПАМЯТИ!")
         
+        # Отправляем уведомление о начале экстренной очистки
+        if self.telegram_bot:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(self._send_telegram_alert(
+                    "⚠️ Критически мало памяти!\n"
+                    "🔧 Запуск экстренной очистки памяти..."
+                ))
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления: {e}")
+        
         success = False
+        killed_process = None
         
         # 1. Находим и убиваем самый жрущий процесс
         memory_hog = self.find_memory_hog_process()
         if memory_hog:
             if self.kill_process(memory_hog.pid, memory_hog.name):
                 success = True
+                killed_process = memory_hog
                 logger.info(f"Убит процесс-пожиратель памяти: {memory_hog.name} (PID: {memory_hog.pid})")
                 
                 # Ждем немного после убийства процесса
                 time.sleep(2)
         
         # 2. Очищаем кэш памяти
-        if self.clear_memory_cache():
+        cache_cleared = self.clear_memory_cache()
+        if cache_cleared:
             success = True
             
         # 3. Проверяем результат
@@ -266,12 +332,34 @@ class ResourceMonitor:
         
         logger.info(f"После экстренной очистки доступно памяти: {available_after_mb:.1f}MB")
         
-        if available_after_mb >= self.min_free_ram_mb:
-            logger.info("Экстренная очистка памяти УСПЕШНА!")
-            return True
-        else:
-            logger.error("Экстренная очистка памяти НЕ ПОМОГЛА!")
-            return False
+        # Отправляем результат в Telegram
+        if self.telegram_bot:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if available_after_mb >= self.min_free_ram_mb:
+                    logger.info("Экстренная очистка памяти УСПЕШНА!")
+                    result_message = (
+                        "✅ Экстренная очистка памяти УСПЕШНА!\n\n"
+                        f"💾 Доступно памяти: {available_after_mb:.1f}MB\n"
+                    )
+                    if killed_process:
+                        result_message += f"🔪 Убит процесс: {killed_process.name} (PID: {killed_process.pid}, {killed_process.memory_mb:.1f}MB)\n"
+                    if cache_cleared:
+                        result_message += "🧹 Кэш памяти очищен\n"
+                else:
+                    logger.error("Экстренная очистка памяти НЕ ПОМОГЛА!")
+                    result_message = (
+                        "❌ Экстренная очистка памяти НЕ ПОМОГЛА!\n\n"
+                        f"💾 Доступно памяти: {available_after_mb:.1f}MB\n"
+                        f"⚠️ Требуется ручное вмешательство!"
+                    )
+                
+                loop.create_task(self._send_telegram_alert(result_message))
+            except Exception as e:
+                logger.error(f"Ошибка отправки результата: {e}")
+        
+        return available_after_mb >= self.min_free_ram_mb
     
     def monitor_resources(self) -> Dict:
         """Основной цикл мониторинга ресурсов"""

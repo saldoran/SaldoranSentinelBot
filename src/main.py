@@ -23,12 +23,15 @@ class SentinelService:
         try:
             logger.info("Загрузка конфигурации...")
             self.config = Config()
-            logger.info("Инициализация BotManager...")
-            self.bot_manager = BotManager()
-            logger.info("Инициализация ResourceMonitor...")
-            self.resource_monitor = ResourceMonitor()
             logger.info("Инициализация TelegramBot...")
-            self.telegram_bot = TelegramBot(self.config, self.bot_manager, self.resource_monitor)
+            self.telegram_bot = TelegramBot(self.config, None, None)  # Временно None
+            logger.info("Инициализация BotManager...")
+            self.bot_manager = BotManager(self.telegram_bot)
+            logger.info("Инициализация ResourceMonitor...")
+            self.resource_monitor = ResourceMonitor(self.telegram_bot)
+            # Обновляем ссылки в telegram_bot
+            self.telegram_bot.bot_manager = self.bot_manager
+            self.telegram_bot.resource_monitor = self.resource_monitor
             self.running = False
             logger.info("SentinelService успешно инициализирован")
         except Exception as e:
