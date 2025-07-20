@@ -266,14 +266,14 @@ class BotManager:
             import time
             logger.info(f"Запуск бота {bot_name} как независимого процесса...")
             
+            # Используем более простой и надежный способ отсоединения
             process = subprocess.Popen(
                 [str(script_to_run)],
                 cwd=bot_path,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 stdin=subprocess.DEVNULL,
-                start_new_session=True,  # Создаем новую сессию
-                preexec_fn=os.setsid if hasattr(os, 'setsid') else None  # Отделяем от группы процессов
+                start_new_session=True  # Создаем новую сессию - этого достаточно
             )
             
             # Отсоединяем процесс от родительского
