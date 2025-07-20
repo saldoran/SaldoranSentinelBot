@@ -38,6 +38,10 @@ class BotManager:
         self.telegram_bot = telegram_bot
         self._ensure_bots_directory()
         
+        # Для отслеживания состояния ботов
+        self._bot_states = {}  # {bot_name: {'was_running': bool, 'last_pid': int}}
+        self._monitoring_task = None
+        
     def _ensure_bots_directory(self):
         """Создание директории для ботов если не существует"""
         if not self.bots_dir.exists():
@@ -524,3 +528,95 @@ class BotManager:
                 bots_info.append(bot_info)
                 
         return bots_info
+    
+    async def start_monitoring(self):
+        """Запуск мониторинга состояния ботов"""
+        if self._monitoring_task is None:
+            logger.info("Запуск мониторинга состояния ботов...")
+            import asyncio
+            self._monitoring_task = asyncio.create_task(self._monitoring_loop())
+    
+    async def stop_monitoring(self):
+        """Остановка мониторинга состояния ботов"""
+        if self._monitoring_task:
+            logger.info("Остановка мониторинга состояния ботов...")
+            self._monitoring_task.cancel()
+            try:
+                await self._monitoring_task
+            except asyncio.CancelledError:
+                pass
+            self._monitoring_task = None
+    
+    async def _monitoring_loop(self):
+        """Основной цикл мониторинга состояния ботов"""
+        import asyncio
+        
+        while True:
+            try:
+                await asyncio.sleep(30)  # Проверяем каждые 30 секунд
+                await self._check_bots_status()
+            except asyncio.CancelledError:
+                logger.info("Мониторинг состояния ботов остановлен")
+                break
+            except Exception as e:
+                logger.error(f"Ошибка в цикле мониторинга ботов: {e}")
+                await asyncio.sleep(10)  # Пауза при ошибке
+    
+    async def _check_bots_status(self):
+        """Проверка состояния всех ботов"""
+        discovered_bots = self.discover_bots()
+        
+        for bot_name in discovered_bots:
+            is_running, current_pid = self._is_bot_running(bot_name)
+            
+            # Получаем предыдущее состояние
+            previous_state = self._bot_states.get(bot_name, {'was_running': False, 'last_pid': None})
+            
+            # Обновляем текущее состояние
+            self._bot_states[bot_name] = {
+                'was_running': is_running,
+                'last_pid': current_pid
+            }
+            
+            # Проверяем изменения состояния
+            if previous_state['was_running'] and not is_running:
+                # Бот упал или был остановлен
+                await self._handle_bot_stopped(bot_name, previous_state['last_pid'])
+            elif not previous_state['was_running'] and is_running:
+                # Бот запустился
+                await self._handle_bot_started(bot_name, current_pid)
+    
+    async def _handle_bot_stopped(self, bot_name: str, last_pid: Optional[int]):
+        """Обработка остановки бота"""
+        logger.warning(f"Обнаружена остановка бота {bot_name} (последний PID: {last_pid})")
+        
+        # Отправляем уведомление в Telegram
+        if self.telegram_bot:
+            try:
+                message = (
+                    f"🚨 <b>Бот остановлен!</b>\n\n"
+                    f"🤖 Бот: <code>{bot_name}</code>\n"
+                    f"🆔 Последний PID: {last_pid or 'неизвестен'}\n"
+                    f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}\n\n"
+                    f"🔍 Проверьте логи бота для выяснения причины остановки."
+                )
+                await self.telegram_bot.send_notification(message)
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления об остановке бота {bot_name}: {e}")
+    
+    async def _handle_bot_started(self, bot_name: str, current_pid: Optional[int]):
+        """Обработка запуска бота"""
+        logger.info(f"Обнаружен запуск бота {bot_name} (PID: {current_pid})")
+        
+        # Отправляем уведомление в Telegram (только если это не первая проверка)
+        if bot_name in self._bot_states and self.telegram_bot:
+            try:
+                message = (
+                    f"✅ <b>Бот запущен!</b>\n\n"
+                    f"🤖 Бот: <code>{bot_name}</code>\n"
+                    f"🆔 PID: {current_pid or 'неизвестен'}\n"
+                    f"⏰ Время: {datetime.now().strftime('%H:%M:%S')}"
+                )
+                await self.telegram_bot.send_notification(message)
+            except Exception as e:
+                logger.error(f"Ошибка отправки уведомления о запуске бота {bot_name}: {e}")

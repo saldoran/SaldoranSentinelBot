@@ -49,6 +49,9 @@ class SentinelService:
             # Запускаем Telegram бота
             await self.telegram_bot.start()
             
+            # Запускаем мониторинг состояния ботов
+            await self.bot_manager.start_monitoring()
+            
             # Отправляем уведомление о запуске
             await self.telegram_bot.send_startup_notification()
             
@@ -79,6 +82,9 @@ class SentinelService:
                 logger.warning(f"Не удалось отправить уведомление о shutdown: {e}")
             
             # Останавливаем компоненты
+            if hasattr(self, 'bot_manager'):
+                await self.bot_manager.stop_monitoring()
+                
             if hasattr(self, 'resource_monitor'):
                 await self.resource_monitor.stop()
                 
