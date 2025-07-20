@@ -258,16 +258,26 @@ class BotManager:
             return True
             
         try:
-            result = subprocess.run(
+            # Запускаем скрипт в фоне
+            import time
+            process = subprocess.Popen(
                 [str(script_to_run)],
                 cwd=bot_path,
-                capture_output=True,
-                text=True,
-                timeout=30
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
             
-            if result.returncode == 0:
-                logger.info(f"Бот {bot_name} успешно запущен")
+            logger.info(f"Запуск бота {bot_name} в фоне (PID: {process.pid})")
+            
+            # Ждем инициализации (5 секунд)
+            time.sleep(5)
+            
+            # Проверяем, что бот действительно запустился
+            is_running, pid = self._is_bot_running(bot_name)
+            
+            if is_running:
+                logger.info(f"Бот {bot_name} успешно запущен и работает (PID: {pid})")
                 
                 # Отправляем уведомление об успешном запуске
                 if self.telegram_bot:
@@ -277,28 +287,33 @@ class BotManager:
                         loop.create_task(self._send_telegram_notification(
                             f"✅ <b>Бот запущен</b>\n\n"
                             f"🤖 Бот: {bot_name}\n"
-                            f"🚀 Статус: Успешно запущен"
+                            f"🚀 Статус: Успешно запущен (PID: {pid})"
                         ))
                     except Exception as e:
                         logger.error(f"Ошибка отправки уведомления: {e}")
                 
                 return True
             else:
-                error_msg = f"Ошибка запуска бота {bot_name}: {result.stderr}"
-                logger.error(error_msg)
-                
-                # Отправляем уведомление об ошибке
-                if self.telegram_bot:
-                    import asyncio
-                    try:
-                        loop = asyncio.get_event_loop()
-                        loop.create_task(self._send_telegram_notification(
-                            f"❌ <b>Ошибка запуска бота</b>\n\n"
-                            f"🤖 Бот: {bot_name}\n"
-                            f"📝 Ошибка: {result.stderr[:200]}..."
-                        ))
-                    except Exception as e:
-                        logger.error(f"Ошибка отправки уведомления: {e}")
+                # Проверяем, завершился ли процесс с ошибкой
+                if process.poll() is not None:
+                    stdout, stderr = process.communicate()
+                    error_msg = f"Ошибка запуска бота {bot_name}: {stderr}"
+                    logger.error(error_msg)
+                    
+                    # Отправляем уведомление об ошибке
+                    if self.telegram_bot:
+                        import asyncio
+                        try:
+                            loop = asyncio.get_event_loop()
+                            loop.create_task(self._send_telegram_notification(
+                                f"❌ <b>Ошибка запуска бота</b>\n\n"
+                                f"🤖 Бот: {bot_name}\n"
+                                f"📝 Ошибка: {stderr[:200]}..."
+                            ))
+                        except Exception as e:
+                            logger.error(f"Ошибка отправки уведомления: {e}")
+                else:
+                    logger.warning(f"Бот {bot_name} запущен, но не обнаружен системой мониторинга")
                 
                 return False
                 
@@ -375,7 +390,7 @@ class BotManager:
                 cwd=bot_path,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=60
             )
             
             if result.returncode == 0:
