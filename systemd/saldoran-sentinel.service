@@ -9,7 +9,7 @@ User=ubuntu
 Group=ubuntu
 WorkingDirectory=/home/ubuntu/SaldoranSentinelBot
 Environment=PATH=/home/ubuntu/SaldoranSentinelBot/venv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/home/ubuntu/SaldoranSentinelBot/venv/bin/python main.py
+ExecStart=/home/ubuntu/SaldoranSentinelBot/venv/bin/python -m src.main
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10

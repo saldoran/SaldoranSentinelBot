@@ -5,11 +5,11 @@ import asyncio
 import threading
 from dotenv import load_dotenv
 
-from config import Config
-from logger import get_logger
-from bot_manager import BotManager
-from resource_monitor import ResourceMonitor
-from telegram_bot import TelegramBot
+from .config import Config
+from .logger import get_logger
+from .bot_manager import BotManager
+from .resource_monitor import ResourceMonitor
+from .telegram_bot import TelegramBot
 
 load_dotenv()
 logger = get_logger(__name__)
