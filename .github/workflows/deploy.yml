@@ -1,0 +1,29 @@
+name: Deploy Saldoran Sentinel
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Pull and restart service on VPS
+        run: |
+          ssh -o StrictHostKeyChecking=no root@185.233.45.95 << 'EOF'
+            cd /home/ubuntu/SaldoranSentinelBot
+            git pull
+            source venv/bin/activate
+            pip install -r requirements.txt
+            sudo systemctl restart saldoran-sentinel
+          EOF
