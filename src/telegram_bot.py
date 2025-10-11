@@ -4,10 +4,10 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 
-from config import Config
-from logger import get_logger
-from bot_manager import BotManager
-from resource_monitor import ResourceMonitor
+from .config import Config
+from .logger import get_logger
+from .bot_manager import BotManager
+from .resource_monitor import ResourceMonitor
 
 logger = get_logger(__name__)
 

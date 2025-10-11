@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
-from config import Config
-from logger import get_logger
+from .config import Config
+from .logger import get_logger
 
 logger = get_logger(__name__)
 
