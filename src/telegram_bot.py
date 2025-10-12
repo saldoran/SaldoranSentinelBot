@@ -248,9 +248,10 @@ class TelegramBot:
                 for proc in stats['top_processes'][:5]:
                     message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
                     
-            keyboard = [[
-                InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")
-            ]]
+            keyboard = [
+                [InlineKeyboardButton("📋 Подробнее", callback_data="resources_detailed")],
+                [InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(
@@ -467,9 +468,10 @@ class TelegramBot:
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     
-                    keyboard = [[
-                        InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")
-                    ]]
+                    keyboard = [
+                        [InlineKeyboardButton("📋 Подробнее", callback_data="resources_detailed")],
+                        [InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")]
+                    ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     try:
@@ -489,6 +491,57 @@ class TelegramBot:
                     logger.error(f"Ошибка обновления ресурсов: {e}")
                     await query.edit_message_text(
                         f"❌ Ошибка получения статистики ресурсов: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            elif data == "resources_detailed":
+                # Показать все процессы
+                try:
+                    stats = await self.resource_monitor.get_system_stats()
+                    
+                    # Добавляем временную метку для уникальности сообщения
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    
+                    message = (
+                        f"📊 <b>Мониторинг ресурсов - Подробно</b>\n\n"
+                        f"🖥️ <b>Система:</b>\n"
+                        f"CPU: {stats['cpu_percent']:.1f}%\n"
+                        f"RAM: {stats['memory_percent']:.1f}%\n"
+                        f"Доступно RAM: {stats['memory_available_mb']:.0f}MB\n"
+                        f"Всего RAM: {stats['memory_total_mb']:.0f}MB\n\n"
+                    )
+                    
+                    if stats.get('top_processes'):
+                        message += "🔝 <b>Все процессы по памяти:</b>\n"
+                        for proc in stats['top_processes']:  # Показываем все процессы
+                            message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
+                    
+                    message += f"\n<i>Обновлено: {timestamp}</i>"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("🔙 Краткий вид", callback_data="resources_refresh")],
+                        [InlineKeyboardButton("🔄 Обновить", callback_data="resources_detailed")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    try:
+                        await query.edit_message_text(
+                            message,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as e:
+                        # Если не удалось отредактировать, отправляем новое сообщение
+                        await query.message.reply_text(
+                            message,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
+                except Exception as e:
+                    logger.error(f"Ошибка получения подробной статистики: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка получения подробной статистики: {e}",
                         parse_mode=ParseMode.HTML
                     )
             
