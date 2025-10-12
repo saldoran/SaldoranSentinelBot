@@ -141,6 +141,11 @@ class ResourceMonitor:
                     cmdline_list = proc.info['cmdline'] or []
                     cmdline = safe_encode_string(' '.join(str(arg) for arg in cmdline_list))
                     
+                    # Пытаемся определить имя бота для Python процессов
+                    bot_name = self._get_bot_name_for_process(proc.info['pid'], process_name, cmdline)
+                    if bot_name:
+                        process_name = f"🤖 {bot_name}"
+                    
                     # Получаем CPU процент для процесса
                     cpu_percent = proc.cpu_percent()
                     
@@ -164,6 +169,76 @@ class ResourceMonitor:
         # Сортируем по использованию памяти (по убыванию)
         processes.sort(key=lambda x: x.memory_mb, reverse=True)
         return processes[:limit]
+    
+    def _get_bot_name_for_process(self, pid: int, process_name: str, cmdline: str) -> Optional[str]:
+        """Определение имени бота по процессу"""
+        try:
+            # Проверяем только Python процессы
+            if process_name.lower() not in ['python', 'python3', 'python3.10', 'python3.11', 'python3.12']:
+                return None
+            
+            # Метод 1: Проверяем PID файлы ботов
+            from pathlib import Path
+            import os
+            
+            # Ищем все PID файлы в /tmp
+            tmp_dir = Path('/tmp')
+            for pid_file in tmp_dir.glob('*.pid'):
+                try:
+                    with open(pid_file, 'r') as f:
+                        file_pid = int(f.read().strip())
+                        if file_pid == pid:
+                            bot_name = pid_file.stem  # Имя файла без расширения
+                            # Проверяем, что это действительно бот Sentinel
+                            if self._is_sentinel_bot(bot_name):
+                                return bot_name
+                except (ValueError, IOError):
+                    continue
+            
+            # Метод 2: Анализируем командную строку
+            if 'run_bot' in cmdline or 'bot' in cmdline.lower():
+                # Пытаемся извлечь имя бота из пути
+                import re
+                # Ищем паттерны типа /path/to/bot_name/run_bot.sh
+                match = re.search(r'/([^/]+)/run_bot', cmdline)
+                if match:
+                    potential_bot_name = match.group(1)
+                    if self._is_sentinel_bot(potential_bot_name):
+                        return potential_bot_name
+                
+                # Ищем паттерны типа python /path/to/bot_name/main.py
+                match = re.search(r'/([^/]+)/main\.py', cmdline)
+                if match:
+                    potential_bot_name = match.group(1)
+                    if self._is_sentinel_bot(potential_bot_name):
+                        return potential_bot_name
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Ошибка при определении имени бота для PID {pid}: {e}")
+            return None
+    
+    def _is_sentinel_bot(self, bot_name: str) -> bool:
+        """Проверяет, является ли имя именем бота Sentinel"""
+        try:
+            from .config import Config
+            bots_dir = Config.BOTS_DIR
+            bot_path = bots_dir / bot_name
+            
+            # Проверяем, что директория существует и содержит скрипты
+            if not bot_path.exists() or not bot_path.is_dir():
+                return False
+            
+            # Проверяем наличие скрипта run_bot
+            run_script = bot_path / 'run_bot.sh'
+            run_script_alt = bot_path / 'run_bot'
+            
+            return (run_script.exists() and os.access(run_script, os.X_OK)) or \
+                   (run_script_alt.exists() and os.access(run_script_alt, os.X_OK))
+                   
+        except Exception:
+            return False
     
     def find_memory_hog_process(self) -> Optional[ProcessInfo]:
         """Поиск самого 'жрущего' процесса пользователя"""
