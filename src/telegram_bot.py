@@ -661,7 +661,10 @@ class TelegramBot:
                     if result.returncode == 0:
                         message = "✅ Кэш системы очищен!"
                     else:
-                        message = f"❌ Ошибка очистки кэша: {result.stderr}"
+                        # Очищаем HTML-теги из ошибки
+                        import re
+                        clean_error = re.sub(r'<[^>]+>', '', result.stderr)
+                        message = f"❌ Ошибка очистки кэша: {clean_error[:200]}"
                         
                     await query.edit_message_text(
                         message,
@@ -669,14 +672,20 @@ class TelegramBot:
                     )
                 except Exception as e:
                     logger.error(f"Ошибка очистки кэша: {e}")
+                    # Очищаем HTML-теги из ошибки
+                    import re
+                    clean_error = re.sub(r'<[^>]+>', '', str(e))
                     await query.edit_message_text(
-                        f"❌ Ошибка очистки кэша: {e}",
+                        f"❌ Ошибка очистки кэша: {clean_error[:200]}",
                         parse_mode=ParseMode.HTML
                     )
                 
         except Exception as e:
             logger.error(f"Ошибка обработки callback {data}: {e}")
+            # Очищаем HTML-теги из ошибки
+            import re
+            clean_error = re.sub(r'<[^>]+>', '', str(e))
             await query.edit_message_text(
-                f"❌ Ошибка обработки команды: {e}",
+                f"❌ Ошибка обработки команды: {clean_error[:200]}",
                 parse_mode=ParseMode.HTML
             )
