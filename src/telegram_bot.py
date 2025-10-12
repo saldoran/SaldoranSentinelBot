@@ -708,36 +708,28 @@ class TelegramBot:
                     )
             
             elif data == "setup_log_level":
-                # Переключение уровня логирования
+                # Меню выбора уровня логирования
                 try:
                     from .config import Config
                     current_level = Config.LOG_LEVEL
                     
-                    # Определяем следующий уровень
                     levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-                    try:
-                        current_index = levels.index(current_level)
-                        next_index = (current_index + 1) % len(levels)
-                        new_level = levels[next_index]
-                    except ValueError:
-                        new_level = 'DEBUG'
-                    
-                    # Обновляем переменную окружения
-                    import os
-                    os.environ['LOG_LEVEL'] = new_level
                     
                     message = (
-                        f"📝 <b>Уровень логирования изменен</b>\n\n"
-                        f"Было: <code>{current_level}</code>\n"
-                        f"Стало: <code>{new_level}</code>\n\n"
-                        f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
-                        f"Используйте кнопку 'Перезапустить сервис' для применения."
+                        f"📝 <b>Выбор уровня логирования</b>\n\n"
+                        f"Текущий уровень: <code>{current_level}</code>\n\n"
+                        f"Выберите новый уровень:"
                     )
                     
-                    keyboard = [
-                        [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
-                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
-                    ]
+                    keyboard = []
+                    for level in levels:
+                        if level == current_level:
+                            button_text = f"✅ {level}"
+                        else:
+                            button_text = f"   {level}"
+                        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"log_level_{level}")])
+                    
+                    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="setup_back")])
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await query.edit_message_text(
@@ -772,6 +764,46 @@ class TelegramBot:
                     reply_markup=reply_markup,
                     parse_mode=ParseMode.HTML
                 )
+            
+            elif data.startswith("log_level_"):
+                # Установка конкретного уровня логирования
+                try:
+                    new_level = data.replace("log_level_", "")
+                    from .config import Config
+                    current_level = Config.LOG_LEVEL
+                    
+                    if new_level == current_level:
+                        message = f"📝 Уровень логирования уже установлен: <code>{current_level}</code>"
+                    else:
+                        # Обновляем переменную окружения
+                        import os
+                        os.environ['LOG_LEVEL'] = new_level
+                        
+                        message = (
+                            f"📝 <b>Уровень логирования изменен</b>\n\n"
+                            f"Было: <code>{current_level}</code>\n"
+                            f"Стало: <code>{new_level}</code>\n\n"
+                            f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
+                            f"Используйте кнопку 'Перезапустить сервис' для применения."
+                        )
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка установки уровня логирования: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка установки уровня логирования: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
                 
         except Exception as e:
             logger.error(f"Ошибка обработки callback {data}: {e}")
