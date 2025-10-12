@@ -233,8 +233,8 @@ class TelegramBot:
                         InlineKeyboardButton(
                             "💥 Force Restart",
                             callback_data=f"bot_force_restart_{bot_name}"
-                        )
-                    ])
+                    )
+                ])
                 
             # Кнопка обновления
             keyboard.append([
@@ -357,8 +357,8 @@ class TelegramBot:
         await update.message.reply_text(
             message,
             reply_markup=reply_markup,
-            parse_mode=ParseMode.HTML
-        )
+                parse_mode=ParseMode.HTML
+            )
             
     async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка callback запросов"""
@@ -481,8 +481,8 @@ class TelegramBot:
                             InlineKeyboardButton(
                                 "💥 Force Restart",
                                 callback_data=f"bot_force_restart_{bot_name}"
-                            )
-                        ])
+                        )
+                    ])
                     
                 # Кнопка обновления
                 keyboard.append([
@@ -838,13 +838,16 @@ class TelegramBot:
                             # Обновляем переменную окружения для текущего процесса
                             os.environ['LOG_LEVEL'] = new_level
                             
+                            # Обновляем уровень логирования в текущем процессе
+                            logger.update_log_level()
+                            
                             message = (
                                 f"📝 <b>Уровень логирования изменен</b>\n\n"
                                 f"Было: <code>{current_level}</code>\n"
                                 f"Стало: <code>{new_level}</code>\n\n"
                                 f"✅ Изменения сохранены в .env файл\n"
-                                f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
-                                f"Используйте кнопку 'Перезапустить сервис' для применения."
+                                f"✅ Уровень логирования обновлен в текущем процессе\n"
+                                f"🎉 <b>Готово!</b> Изменения применены сразу."
                             )
                         except Exception as env_error:
                             logger.error(f"Ошибка обновления .env файла: {env_error}")
@@ -858,7 +861,6 @@ class TelegramBot:
                             )
                     
                     keyboard = [
-                        [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
                         [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
                     ]
                     reply_markup = InlineKeyboardMarkup(keyboard)
