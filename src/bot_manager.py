@@ -58,16 +58,24 @@ class BotManager:
             
         for item in self.bots_dir.iterdir():
             if item.is_dir() and not item.name.startswith('.'):
+                logger.debug(f"Проверяем директорию: {item.name}")
                 # Проверяем наличие скрипта run_bot или run_bot.sh
                 run_script = item / 'run_bot'
                 run_script_sh = item / 'run_bot.sh'
                 
+                logger.debug(f"  run_bot: {run_script.exists()} (executable: {os.access(run_script, os.X_OK) if run_script.exists() else False})")
+                logger.debug(f"  run_bot.sh: {run_script_sh.exists()} (executable: {os.access(run_script_sh, os.X_OK) if run_script_sh.exists() else False})")
+                
                 if (run_script.exists() and os.access(run_script, os.X_OK)) or \
                    (run_script_sh.exists() and os.access(run_script_sh, os.X_OK)):
                     bots.append(item.name)
-                    logger.debug(f"Найден бот: {item.name}")
+                    logger.info(f"✅ Найден бот: {item.name}")
+                else:
+                    logger.debug(f"❌ Директория {item.name} не содержит исполняемых скриптов run_bot")
                     
         logger.info(f"Обнаружено ботов: {len(bots)}")
+        if bots:
+            logger.info(f"Список ботов: {', '.join(bots)}")
         return sorted(bots)
     
     def get_bot_info(self, bot_name: str) -> Optional[BotInfo]:

@@ -72,7 +72,33 @@ class TelegramBot:
     async def send_startup_notification(self):
         """Отправка уведомления о запуске"""
         try:
-            message = "✅ SaldoranSentinelBot запущен\n\nИспользуйте /help для списка команд"
+            # Получаем список обнаруженных ботов
+            available_bots = self.bot_manager.discover_bots()
+            running_bots = []
+            
+            for bot_name in available_bots:
+                bot_info = self.bot_manager.get_bot_info(bot_name)
+                if bot_info and bot_info.is_running:
+                    running_bots.append(bot_name)
+            
+            message = (
+                f"✅ <b>SaldoranSentinelBot запущен</b>\n\n"
+                f"🤖 <b>Обнаружено ботов:</b> {len(available_bots)}\n"
+                f"🟢 <b>Запущено:</b> {len(running_bots)}\n\n"
+            )
+            
+            if available_bots:
+                message += "📋 <b>Список ботов:</b>\n"
+                for bot_name in available_bots:
+                    is_running = bot_name in running_bots
+                    status_icon = "🟢" if is_running else "🔴"
+                    message += f"{status_icon} <code>{bot_name}</code>\n"
+            else:
+                message += "⚠️ <b>Боты не обнаружены</b>\n"
+                message += "Проверьте директорию ботов и наличие скриптов run_bot.sh\n\n"
+            
+            message += "\n💡 Используйте /help для списка команд"
+            
             await self.app.bot.send_message(
                 chat_id=self.config.TELEGRAM_ADMIN_ID,
                 text=message,
