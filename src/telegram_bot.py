@@ -621,6 +621,12 @@ class TelegramBot:
             elif data == "setup_restart":
                 # Перезапуск сервиса
                 try:
+                    # Сначала обновляем сообщение о начале перезапуска
+                    await query.edit_message_text(
+                        "🔄 Перезапуск сервиса...",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
                     import subprocess
                     result = subprocess.run(
                         ["sudo", "systemctl", "restart", "saldoran-sentinel"],
@@ -632,18 +638,40 @@ class TelegramBot:
                     if result.returncode == 0:
                         message = "✅ Сервис успешно перезапущен!"
                     else:
-                        message = f"❌ Ошибка перезапуска: {result.stderr}"
+                        # Очищаем HTML-теги из ошибки
+                        import re
+                        clean_error = re.sub(r'<[^>]+>', '', result.stderr)
+                        message = f"❌ Ошибка перезапуска: {clean_error[:200]}"
                         
-                    await query.edit_message_text(
-                        message,
-                        parse_mode=ParseMode.HTML
-                    )
+                    # Пытаемся отредактировать сообщение
+                    try:
+                        await query.edit_message_text(
+                            message,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception:
+                        # Если не удалось отредактировать (сервис перезапускается), отправляем новое сообщение
+                        await query.message.reply_text(
+                            message,
+                            parse_mode=ParseMode.HTML
+                        )
+                        
                 except Exception as e:
                     logger.error(f"Ошибка перезапуска сервиса: {e}")
-                    await query.edit_message_text(
-                        f"❌ Ошибка перезапуска сервиса: {e}",
-                        parse_mode=ParseMode.HTML
-                    )
+                    # Очищаем HTML-теги из ошибки
+                    import re
+                    clean_error = re.sub(r'<[^>]+>', '', str(e))
+                    try:
+                        await query.edit_message_text(
+                            f"❌ Ошибка перезапуска сервиса: {clean_error[:200]}",
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception:
+                        # Если не удалось отредактировать, отправляем новое сообщение
+                        await query.message.reply_text(
+                            f"❌ Ошибка перезапуска сервиса: {clean_error[:200]}",
+                            parse_mode=ParseMode.HTML
+                        )
             
             elif data == "setup_status":
                 # Статус сервиса
