@@ -102,6 +102,17 @@ class DailyRotatingLogger:
         """Логирование отладочной информации"""
         self._check_date_rotation()
         self.logger.debug(message)
+    
+    def update_log_level(self):
+        """Обновляет уровень логирования из конфигурации"""
+        from .config import Config
+        Config.reload_config()  # Перезагружаем конфигурацию
+        new_level = getattr(logging, Config.LOG_LEVEL)
+        self.logger.setLevel(new_level)
+        
+        # Обновляем уровень для всех обработчиков
+        for handler in self.logger.handlers:
+            handler.setLevel(new_level)
 
 
 def get_logger(name: str = "SentinelBot") -> DailyRotatingLogger:

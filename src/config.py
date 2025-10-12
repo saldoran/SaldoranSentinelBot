@@ -43,6 +43,19 @@ class Config:
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
     @classmethod
+    def reload_config(cls):
+        """Перезагружает конфигурацию из .env файла"""
+        load_dotenv(override=True)  # override=True перезаписывает существующие переменные
+        # Обновляем все переменные
+        cls.TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+        cls.TELEGRAM_ADMIN_ID = int(os.getenv('TELEGRAM_ADMIN_ID', 0))
+        cls.MAX_CPU_PERCENT = float(os.getenv('MAX_CPU_PERCENT', 95))
+        cls.MIN_FREE_RAM_MB = int(os.getenv('MIN_FREE_RAM_MB', 40))
+        cls.MONITORING_INTERVAL = int(os.getenv('MONITORING_INTERVAL', 60))
+        cls.TARGET_USER = os.getenv('TARGET_USER', getpass.getuser())
+        cls.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+    
+    @classmethod
     def validate(cls):
         """Валидация конфигурации"""
         errors = []
