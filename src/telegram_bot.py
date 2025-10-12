@@ -244,7 +244,7 @@ class TelegramBot:
             if stats.get('top_processes'):
                 message += "🔝 <b>Топ процессов по памяти:</b>\n"
                 for proc in stats['top_processes'][:5]:
-                    message += f"• {proc.name}: {proc.memory_mb:.1f}MB\n"
+                    message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
                     
             keyboard = [[
                 InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")

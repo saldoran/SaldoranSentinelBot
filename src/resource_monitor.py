@@ -133,9 +133,9 @@ class ResourceMonitor:
         try:
             for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cmdline']):
                 try:
-                    # Фильтруем только процессы целевого пользователя
-                    if proc.info['username'] != self.target_user:
-                        continue
+                    # Показываем все процессы (убрали фильтр по пользователю)
+                    # if proc.info['username'] != self.target_user:
+                    #     continue
                         
                     memory_mb = proc.info['memory_info'].rss / 1024 / 1024
                     
