@@ -349,7 +349,8 @@ class TelegramBot:
         keyboard = [
             [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
             [InlineKeyboardButton("📊 Статус сервиса", callback_data="setup_status")],
-            [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")]
+            [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")],
+            [InlineKeyboardButton("📝 Уровень логов", callback_data="setup_log_level")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -705,6 +706,72 @@ class TelegramBot:
                         f"❌ Ошибка очистки кэша: {clean_error[:200]}",
                         parse_mode=ParseMode.HTML
                     )
+            
+            elif data == "setup_log_level":
+                # Переключение уровня логирования
+                try:
+                    from .config import Config
+                    current_level = Config.LOG_LEVEL
+                    
+                    # Определяем следующий уровень
+                    levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+                    try:
+                        current_index = levels.index(current_level)
+                        next_index = (current_index + 1) % len(levels)
+                        new_level = levels[next_index]
+                    except ValueError:
+                        new_level = 'DEBUG'
+                    
+                    # Обновляем переменную окружения
+                    import os
+                    os.environ['LOG_LEVEL'] = new_level
+                    
+                    message = (
+                        f"📝 <b>Уровень логирования изменен</b>\n\n"
+                        f"Было: <code>{current_level}</code>\n"
+                        f"Стало: <code>{new_level}</code>\n\n"
+                        f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
+                        f"Используйте кнопку 'Перезапустить сервис' для применения."
+                    )
+                    
+                    keyboard = [
+                        [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка изменения уровня логирования: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка изменения уровня логирования: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            elif data == "setup_back":
+                # Возврат к главному меню setup
+                message = (
+                    "⚙️ <b>Настройки и управление</b>\n\n"
+                    "Выберите действие:"
+                )
+                
+                keyboard = [
+                    [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
+                    [InlineKeyboardButton("📊 Статус сервиса", callback_data="setup_status")],
+                    [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")],
+                    [InlineKeyboardButton("📝 Уровень логов", callback_data="setup_log_level")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
                 
         except Exception as e:
             logger.error(f"Ошибка обработки callback {data}: {e}")
