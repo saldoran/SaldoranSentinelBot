@@ -829,6 +829,11 @@ class TelegramBot:
                             with open(env_file, 'w', encoding='utf-8') as f:
                                 f.write('\n'.join(lines))
                             
+                            # Логируем что записали
+                            logger.info(f"Обновлен .env файл: {env_file}")
+                            logger.info(f"Новый LOG_LEVEL: {new_level}")
+                            logger.info(f"Содержимое .env: {repr('\n'.join(lines))}")
+                            
                             # Обновляем переменную окружения для текущего процесса
                             os.environ['LOG_LEVEL'] = new_level
                             
