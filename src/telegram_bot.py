@@ -447,6 +447,10 @@ class TelegramBot:
                 try:
                     stats = await self.resource_monitor.get_system_stats()
                     
+                    # Добавляем временную метку для уникальности сообщения
+                    from datetime import datetime
+                    timestamp = datetime.now().strftime("%H:%M:%S")
+                    
                     message = (
                         f"📊 <b>Мониторинг ресурсов</b>\n\n"
                         f"🖥️ <b>Система:</b>\n"
@@ -461,16 +465,26 @@ class TelegramBot:
                         for proc in stats['top_processes'][:5]:
                             message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
                     
+                    message += f"\n<i>Обновлено: {timestamp}</i>"
+                    
                     keyboard = [[
                         InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")
                     ]]
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
-                    await query.edit_message_text(
-                        message,
-                        reply_markup=reply_markup,
-                        parse_mode=ParseMode.HTML
-                    )
+                    try:
+                        await query.edit_message_text(
+                            message,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception as e:
+                        # Если не удалось отредактировать, отправляем новое сообщение
+                        await query.message.reply_text(
+                            message,
+                            reply_markup=reply_markup,
+                            parse_mode=ParseMode.HTML
+                        )
                 except Exception as e:
                     logger.error(f"Ошибка обновления ресурсов: {e}")
                     await query.edit_message_text(
