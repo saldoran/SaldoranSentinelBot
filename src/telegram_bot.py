@@ -216,7 +216,8 @@ class TelegramBot:
                 action = "stop" if is_running else "start"
                 action_text = "Остановить" if is_running else "Запустить"
                 
-                keyboard.append([
+                # Создаем строку кнопок для бота
+                bot_row = [
                     InlineKeyboardButton(
                         f"{status_icon} {bot_name}",
                         callback_data=f"bot_info_{bot_name}"
@@ -225,16 +226,18 @@ class TelegramBot:
                         action_text,
                         callback_data=f"bot_{action}_{bot_name}"
                     )
-                ])
+                ]
                 
-                # Добавляем кнопку Force Restart для запущенных ботов
+                # Добавляем кнопку Force Restart для запущенных ботов в ту же строку
                 if is_running:
-                    keyboard.append([
+                    bot_row.append(
                         InlineKeyboardButton(
                             "💥 Force Restart",
                             callback_data=f"bot_force_restart_{bot_name}"
+                        )
                     )
-                ])
+                
+                keyboard.append(bot_row)
                 
             # Кнопка обновления
             keyboard.append([
