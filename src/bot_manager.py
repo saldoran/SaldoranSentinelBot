@@ -438,6 +438,12 @@ class BotManager:
                     except Exception as e:
                         logger.error(f"Ошибка отправки уведомления: {e}")
                 
+                # Пытаемся принудительно остановить бот как fallback
+                logger.info(f"Попытка принудительной остановки бота {bot_name} после ошибки скрипта")
+                if self.force_stop_bot(bot_name):
+                    logger.info(f"Бот {bot_name} принудительно остановлен после ошибки скрипта")
+                    return True
+                
                 return False
                 
         except subprocess.TimeoutExpired:
@@ -457,6 +463,12 @@ class BotManager:
                 except Exception as e:
                     logger.error(f"Ошибка отправки уведомления: {e}")
             
+            # Пытаемся принудительно остановить бот после таймаута
+            logger.info(f"Попытка принудительной остановки бота {bot_name} после таймаута")
+            if self.force_stop_bot(bot_name):
+                logger.info(f"Бот {bot_name} принудительно остановлен после таймаута")
+                return True
+            
             return False
         except Exception as e:
             error_msg = f"Исключение при остановке бота {bot_name}: {e}"
@@ -475,7 +487,73 @@ class BotManager:
                 except Exception as e:
                     logger.error(f"Ошибка отправки уведомления: {e}")
             
+            # Пытаемся принудительно остановить бот как последний шанс
+            logger.info(f"Попытка принудительной остановки бота {bot_name} после ошибки")
+            if self.force_stop_bot(bot_name):
+                logger.info(f"Бот {bot_name} принудительно остановлен после ошибки")
+                return True
+            
             return False
+    
+    def force_stop_bot(self, bot_name: str) -> bool:
+        """Принудительная остановка бота через SIGTERM/SIGKILL"""
+        logger.info(f"Принудительная остановка бота {bot_name}")
+        
+        # Сначала пытаемся найти PID бота
+        is_running, pid = self._is_bot_running(bot_name)
+        
+        if not is_running or not pid:
+            logger.info(f"Бот {bot_name} уже не запущен")
+            # Очищаем PID файл на всякий случай
+            self._cleanup_pid_file(bot_name)
+            return True
+        
+        try:
+            # Сначала пытаемся SIGTERM (мягкая остановка)
+            logger.info(f"Отправка SIGTERM процессу {pid}")
+            process = psutil.Process(pid)
+            process.terminate()
+            
+            # Ждем до 10 секунд
+            try:
+                process.wait(timeout=10)
+                logger.info(f"Бот {bot_name} успешно остановлен (SIGTERM)")
+                self._cleanup_pid_file(bot_name)
+                return True
+            except psutil.TimeoutExpired:
+                logger.warning(f"Бот {bot_name} не остановился после SIGTERM, отправляем SIGKILL")
+                
+                # Если не помогло, используем SIGKILL
+                try:
+                    process.kill()
+                    process.wait(timeout=5)
+                    logger.info(f"Бот {bot_name} принудительно остановлен (SIGKILL)")
+                    self._cleanup_pid_file(bot_name)
+                    return True
+                except psutil.TimeoutExpired:
+                    logger.error(f"Не удалось остановить бот {bot_name} даже с SIGKILL")
+                    return False
+                    
+        except psutil.NoSuchProcess:
+            logger.info(f"Процесс {pid} уже не существует")
+            self._cleanup_pid_file(bot_name)
+            return True
+        except psutil.AccessDenied:
+            logger.error(f"Нет прав для остановки процесса {pid}")
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка при принудительной остановке бота {bot_name}: {e}")
+            return False
+    
+    def _cleanup_pid_file(self, bot_name: str):
+        """Очистка PID файла"""
+        pid_file = Path(f"/tmp/{bot_name}.pid")
+        if pid_file.exists():
+            try:
+                pid_file.unlink()
+                logger.debug(f"PID файл {pid_file} удален")
+            except Exception as e:
+                logger.warning(f"Не удалось удалить PID файл {pid_file}: {e}")
     
     def restart_bot(self, bot_name: str) -> bool:
         """Перезапуск бота"""

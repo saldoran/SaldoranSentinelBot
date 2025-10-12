@@ -201,6 +201,15 @@ class TelegramBot:
                     )
                 ])
                 
+                # Добавляем кнопку Force Restart для запущенных ботов
+                if is_running:
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            "💥 Force Restart",
+                            callback_data=f"bot_force_restart_{bot_name}"
+                        )
+                    ])
+                
             # Кнопка обновления
             keyboard.append([
                 InlineKeyboardButton("🔄 Обновить", callback_data="bots_refresh")
@@ -363,6 +372,34 @@ class TelegramBot:
                         parse_mode=ParseMode.HTML
                     )
                     
+            elif data.startswith("bot_force_restart_"):
+                bot_name = data.replace("bot_force_restart_", "")
+                
+                # Сначала принудительно останавливаем бот
+                stop_result = self.bot_manager.force_stop_bot(bot_name)
+                if stop_result:
+                    # Ждем немного, чтобы процесс полностью завершился
+                    import asyncio
+                    await asyncio.sleep(2)
+                    
+                    # Затем запускаем бот
+                    start_result = self.bot_manager.start_bot(bot_name)
+                    if start_result:
+                        await query.edit_message_text(
+                            f"💥 Бот {bot_name} принудительно перезапущен",
+                            parse_mode=ParseMode.HTML
+                        )
+                    else:
+                        await query.edit_message_text(
+                            f"💥 Бот {bot_name} остановлен, но не удалось запустить",
+                            parse_mode=ParseMode.HTML
+                        )
+                else:
+                    await query.edit_message_text(
+                        f"❌ Не удалось принудительно остановить бот {bot_name}",
+                        parse_mode=ParseMode.HTML
+                    )
+                    
             elif data.startswith("bot_info_"):
                 bot_name = data.replace("bot_info_", "")
                 bot_info = self.bot_manager.get_bot_info(bot_name)
@@ -410,6 +447,15 @@ class TelegramBot:
                             callback_data=f"bot_{action}_{bot_name}"
                         )
                     ])
+                    
+                    # Добавляем кнопку Force Restart для запущенных ботов
+                    if is_running:
+                        keyboard.append([
+                            InlineKeyboardButton(
+                                "💥 Force Restart",
+                                callback_data=f"bot_force_restart_{bot_name}"
+                            )
+                        ])
                     
                 # Кнопка обновления
                 keyboard.append([
