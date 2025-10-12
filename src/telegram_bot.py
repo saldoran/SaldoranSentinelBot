@@ -36,6 +36,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("bots", self._cmd_bots))
         self.app.add_handler(CommandHandler("resources", self._cmd_resources))
+        self.app.add_handler(CommandHandler("setup", self._cmd_setup))
         self.app.add_handler(CommandHandler("logs", self._cmd_logs))
         
         # Callback обработчики
@@ -131,6 +132,7 @@ class TelegramBot:
             "/status - Общий статус системы\n"
             "/bots - Управление ботами\n"
             "/resources - Мониторинг ресурсов\n"
+            "/setup - Настройки и управление\n"
             "/logs - Просмотр логов\n"
         )
         await update.message.reply_text(message, parse_mode=ParseMode.HTML)
@@ -297,6 +299,29 @@ class TelegramBot:
                 f"❌ Ошибка получения логов: {e}",
                 parse_mode=ParseMode.HTML
             )
+    
+    async def _cmd_setup(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /setup"""
+        if not self._is_admin(update.effective_user.id):
+            return
+            
+        message = (
+            "⚙️ <b>Настройки и управление</b>\n\n"
+            "Выберите действие:"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
+            [InlineKeyboardButton("📊 Статус сервиса", callback_data="setup_status")],
+            [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            message,
+            reply_markup=reply_markup,
+            parse_mode=ParseMode.HTML
+        )
             
     async def _handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка callback запросов"""
@@ -418,14 +443,123 @@ class TelegramBot:
                     )
                 
             elif data == "resources_refresh":
-                # Для callback нужно создать fake update с message
-                fake_update = type('obj', (object,), {
-                    'effective_user': update.effective_user,
-                    'message': type('obj', (object,), {
-                        'reply_text': query.edit_message_text
-                    })()
-                })()
-                await self._cmd_resources(fake_update, context)
+                # Обновляем ресурсы через callback
+                try:
+                    stats = await self.resource_monitor.get_system_stats()
+                    
+                    message = (
+                        f"📊 <b>Мониторинг ресурсов</b>\n\n"
+                        f"🖥️ <b>Система:</b>\n"
+                        f"CPU: {stats['cpu_percent']:.1f}%\n"
+                        f"RAM: {stats['memory_percent']:.1f}%\n"
+                        f"Доступно RAM: {stats['memory_available_mb']:.0f}MB\n"
+                        f"Всего RAM: {stats['memory_total_mb']:.0f}MB\n\n"
+                    )
+                    
+                    if stats.get('top_processes'):
+                        message += "🔝 <b>Топ процессов по памяти:</b>\n"
+                        for proc in stats['top_processes'][:5]:
+                            message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
+                    
+                    keyboard = [[
+                        InlineKeyboardButton("🔄 Обновить", callback_data="resources_refresh")
+                    ]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка обновления ресурсов: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка получения статистики ресурсов: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            elif data == "setup_restart":
+                # Перезапуск сервиса
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "restart", "saldoran-sentinel"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30
+                    )
+                    
+                    if result.returncode == 0:
+                        message = "✅ Сервис успешно перезапущен!"
+                    else:
+                        message = f"❌ Ошибка перезапуска: {result.stderr}"
+                        
+                    await query.edit_message_text(
+                        message,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка перезапуска сервиса: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка перезапуска сервиса: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            elif data == "setup_status":
+                # Статус сервиса
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "status", "saldoran-sentinel", "--no-pager"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    status_text = result.stdout[:1000]  # Ограничиваем длину
+                    if len(result.stdout) > 1000:
+                        status_text += "..."
+                    
+                    message = f"📊 <b>Статус сервиса:</b>\n\n<code>{status_text}</code>"
+                    
+                    await query.edit_message_text(
+                        message,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка получения статуса: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка получения статуса: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
+            
+            elif data == "setup_clear_cache":
+                # Очистка кэша
+                try:
+                    import subprocess
+                    result = subprocess.run(
+                        ["sudo", "sync", "&&", "sudo", "echo", "3", ">", "/proc/sys/vm/drop_caches"],
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if result.returncode == 0:
+                        message = "✅ Кэш системы очищен!"
+                    else:
+                        message = f"❌ Ошибка очистки кэша: {result.stderr}"
+                        
+                    await query.edit_message_text(
+                        message,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка очистки кэша: {e}")
+                    await query.edit_message_text(
+                        f"❌ Ошибка очистки кэша: {e}",
+                        parse_mode=ParseMode.HTML
+                    )
                 
         except Exception as e:
             logger.error(f"Ошибка обработки callback {data}: {e}")
