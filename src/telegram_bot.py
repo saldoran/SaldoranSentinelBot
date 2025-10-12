@@ -860,13 +860,31 @@ class TelegramBot:
                                 f"⚠️ Не удалось сохранить в .env файл, но переменная окружения обновлена."
                             )
                     
-                    keyboard = [
-                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
-                    ]
+                    # Обновляем меню с новым текущим уровнем
+                    Config.reload_config()  # Перезагружаем конфигурацию
+                    current_level = Config.LOG_LEVEL
+                    
+                    levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+                    
+                    menu_message = (
+                        f"📝 <b>Выбор уровня логирования</b>\n\n"
+                        f"Текущий уровень: <code>{current_level}</code>\n\n"
+                        f"Выберите новый уровень:"
+                    )
+                    
+                    keyboard = []
+                    for level in levels:
+                        if level == current_level:
+                            button_text = f"✅ {level}"
+                        else:
+                            button_text = f"   {level}"
+                        keyboard.append([InlineKeyboardButton(button_text, callback_data=f"log_level_{level}")])
+                    
+                    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="setup_back")])
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await query.edit_message_text(
-                        message,
+                        menu_message,
                         reply_markup=reply_markup,
                         parse_mode=ParseMode.HTML
                     )
