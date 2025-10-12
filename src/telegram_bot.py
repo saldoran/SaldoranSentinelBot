@@ -635,8 +635,18 @@ class TelegramBot:
                         timeout=30
                     )
                     
-                    if result.returncode == 0:
-                        message = "✅ Сервис успешно перезапущен!"
+                    # Проверяем статус сервиса после перезапуска
+                    status_result = subprocess.run(
+                        ["sudo", "systemctl", "is-active", "saldoran-sentinel"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10
+                    )
+                    
+                    if status_result.returncode == 0 and status_result.stdout.strip() == "active":
+                        message = "✅ Сервис успешно перезапущен и активен!"
+                    elif result.returncode == 0:
+                        message = "✅ Сервис перезапущен (статус проверяется...)"
                     else:
                         # Очищаем HTML-теги из ошибки
                         import re
@@ -803,17 +813,58 @@ class TelegramBot:
                     if new_level == current_level:
                         message = f"📝 Уровень логирования уже установлен: <code>{current_level}</code>"
                     else:
-                        # Обновляем переменную окружения
+                        # Обновляем .env файл на сервере
                         import os
-                        os.environ['LOG_LEVEL'] = new_level
+                        import subprocess
+                        from pathlib import Path
                         
-                        message = (
-                            f"📝 <b>Уровень логирования изменен</b>\n\n"
-                            f"Было: <code>{current_level}</code>\n"
-                            f"Стало: <code>{new_level}</code>\n\n"
-                            f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
-                            f"Используйте кнопку 'Перезапустить сервис' для применения."
-                        )
+                        # Путь к .env файлу на сервере
+                        env_file = Path(__file__).parent.parent / '.env'
+                        
+                        try:
+                            # Читаем текущий .env файл
+                            env_content = ""
+                            if env_file.exists():
+                                with open(env_file, 'r', encoding='utf-8') as f:
+                                    env_content = f.read()
+                            
+                            # Обновляем или добавляем LOG_LEVEL
+                            lines = env_content.split('\n')
+                            updated = False
+                            for i, line in enumerate(lines):
+                                if line.startswith('LOG_LEVEL='):
+                                    lines[i] = f'LOG_LEVEL={new_level}'
+                                    updated = True
+                                    break
+                            
+                            if not updated:
+                                lines.append(f'LOG_LEVEL={new_level}')
+                            
+                            # Записываем обновленный .env файл
+                            with open(env_file, 'w', encoding='utf-8') as f:
+                                f.write('\n'.join(lines))
+                            
+                            # Обновляем переменную окружения для текущего процесса
+                            os.environ['LOG_LEVEL'] = new_level
+                            
+                            message = (
+                                f"📝 <b>Уровень логирования изменен</b>\n\n"
+                                f"Было: <code>{current_level}</code>\n"
+                                f"Стало: <code>{new_level}</code>\n\n"
+                                f"✅ Изменения сохранены в .env файл\n"
+                                f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
+                                f"Используйте кнопку 'Перезапустить сервис' для применения."
+                            )
+                        except Exception as env_error:
+                            logger.error(f"Ошибка обновления .env файла: {env_error}")
+                            message = (
+                                f"📝 <b>Уровень логирования изменен</b>\n\n"
+                                f"Было: <code>{current_level}</code>\n"
+                                f"Стало: <code>{new_level}</code>\n\n"
+                                f"⚠️ <b>Внимание:</b> Изменения вступят в силу после перезапуска сервиса.\n"
+                                f"Используйте кнопку 'Перезапустить сервис' для применения.\n\n"
+                                f"⚠️ Не удалось сохранить в .env файл, но переменная окружения обновлена."
+                            )
                     
                     keyboard = [
                         [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
