@@ -28,7 +28,8 @@ jobs:
           ssh -o StrictHostKeyChecking=no root@185.233.45.95 << 'EOF'
             set -e
             cd /home/SaldoranSentinelBot
-            git pull
+            git fetch origin
+            git reset --hard origin/main
             source venv/bin/activate
             pip install --upgrade pip
             pip install -r requirements.txt
