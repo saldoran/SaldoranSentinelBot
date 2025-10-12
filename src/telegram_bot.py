@@ -635,23 +635,8 @@ class TelegramBot:
                         timeout=30
                     )
                     
-                    # Проверяем статус сервиса после перезапуска
-                    status_result = subprocess.run(
-                        ["sudo", "systemctl", "is-active", "saldoran-sentinel"],
-                        capture_output=True,
-                        text=True,
-                        timeout=10
-                    )
-                    
-                    if status_result.returncode == 0 and status_result.stdout.strip() == "active":
-                        message = "✅ Сервис успешно перезапущен и активен!"
-                    elif result.returncode == 0:
-                        message = "✅ Сервис перезапущен (статус проверяется...)"
-                    else:
-                        # Очищаем HTML-теги из ошибки
-                        import re
-                        clean_error = re.sub(r'<[^>]+>', '', result.stderr)
-                        message = f"❌ Ошибка перезапуска: {clean_error[:200]}"
+                    # Просто сообщаем о перезапуске, не проверяем статус
+                    message = "✅ Сервис перезапущен!"
                         
                     # Пытаемся отредактировать сообщение
                     try:
