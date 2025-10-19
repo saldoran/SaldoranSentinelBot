@@ -133,6 +133,16 @@ class TelegramBot:
     def _is_admin(self, user_id: int) -> bool:
         """Проверка прав администратора"""
         return user_id == self.config.TELEGRAM_ADMIN_ID
+    
+    def _format_process_info(self, proc) -> str:
+        """Форматирование информации о процессе"""
+        # Для Python процессов показываем имя бота и PID
+        if 'python' in proc.name.lower() or '🤖' in proc.name:
+            # Извлекаем имя бота из названия процесса
+            bot_name = proc.name.replace('🤖 ', '') if '🤖' in proc.name else 'Python'
+            return f"• {bot_name} (PID: {proc.pid}): {proc.memory_mb:.1f}MB"
+        else:
+            return f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB"
         
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда /start"""
@@ -284,7 +294,7 @@ class TelegramBot:
             if stats.get('top_processes'):
                 message += "🔝 <b>Топ процессов по памяти:</b>\n"
                 for proc in stats['top_processes'][:5]:
-                    message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
+                    message += self._format_process_info(proc) + "\n"
                     
             keyboard = [
                 [InlineKeyboardButton("📋 Подробнее", callback_data="resources_detailed")],
@@ -540,7 +550,7 @@ class TelegramBot:
                     if stats.get('top_processes'):
                         message += "🔝 <b>Топ процессов по памяти:</b>\n"
                         for proc in stats['top_processes'][:5]:
-                            message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
+                            message += self._format_process_info(proc) + "\n"
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     
@@ -591,7 +601,7 @@ class TelegramBot:
                     if stats.get('top_processes'):
                         message += "🔝 <b>Все процессы по памяти:</b>\n"
                         for proc in stats['top_processes']:  # Показываем все процессы
-                            message += f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB\n"
+                            message += self._format_process_info(proc) + "\n"
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     

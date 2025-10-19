@@ -3,9 +3,12 @@
 """
 
 import asyncio
+import os
 import psutil
+import re
 import subprocess
 import time
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -177,11 +180,7 @@ class ResourceMonitor:
             if process_name.lower() not in ['python', 'python3', 'python3.10', 'python3.11', 'python3.12']:
                 return None
             
-            # Метод 1: Проверяем PID файлы ботов
-            from pathlib import Path
-            import os
-            
-            # Ищем все PID файлы в /tmp
+            # Метод 1: Проверяем PID файлы ботов в /tmp
             tmp_dir = Path('/tmp')
             for pid_file in tmp_dir.glob('*.pid'):
                 try:
@@ -189,29 +188,32 @@ class ResourceMonitor:
                         file_pid = int(f.read().strip())
                         if file_pid == pid:
                             bot_name = pid_file.stem  # Имя файла без расширения
-                            # Проверяем, что это действительно бот Sentinel
-                            if self._is_sentinel_bot(bot_name):
-                                return bot_name
+                            logger.debug(f"Найден бот {bot_name} по PID файлу для процесса {pid}")
+                            return bot_name
                 except (ValueError, IOError):
                     continue
             
-            # Метод 2: Анализируем командную строку
-            if 'run_bot' in cmdline or 'bot' in cmdline.lower():
-                # Пытаемся извлечь имя бота из пути
-                import re
-                # Ищем паттерны типа /path/to/bot_name/run_bot.sh
-                match = re.search(r'/([^/]+)/run_bot', cmdline)
-                if match:
-                    potential_bot_name = match.group(1)
-                    if self._is_sentinel_bot(potential_bot_name):
-                        return potential_bot_name
-                
-                # Ищем паттерны типа python /path/to/bot_name/main.py
-                match = re.search(r'/([^/]+)/main\.py', cmdline)
-                if match:
-                    potential_bot_name = match.group(1)
-                    if self._is_sentinel_bot(potential_bot_name):
-                        return potential_bot_name
+            # Метод 2: Анализируем командную строку для поиска имени бота
+            # Ищем в test_bot директории
+            match = re.search(r'/test_bot/([^/]+)/', cmdline)
+            if match:
+                potential_bot_name = match.group(1)
+                logger.debug(f"Найден бот {potential_bot_name} по пути test_bot для процесса {pid}")
+                return potential_bot_name
+            
+            # Ищем паттерны типа /path/to/bot_name/run_bot.sh
+            match = re.search(r'/([^/]+)/run_bot', cmdline)
+            if match:
+                potential_bot_name = match.group(1)
+                logger.debug(f"Найден бот {potential_bot_name} по run_bot скрипту для процесса {pid}")
+                return potential_bot_name
+            
+            # Ищем паттерны типа python /path/to/bot_name/main.py
+            match = re.search(r'/([^/]+)/main\.py', cmdline)
+            if match:
+                potential_bot_name = match.group(1)
+                logger.debug(f"Найден бот {potential_bot_name} по main.py для процесса {pid}")
+                return potential_bot_name
             
             return None
             
@@ -219,26 +221,6 @@ class ResourceMonitor:
             logger.debug(f"Ошибка при определении имени бота для PID {pid}: {e}")
             return None
     
-    def _is_sentinel_bot(self, bot_name: str) -> bool:
-        """Проверяет, является ли имя именем бота Sentinel"""
-        try:
-            from .config import Config
-            bots_dir = Config.BOTS_DIR
-            bot_path = bots_dir / bot_name
-            
-            # Проверяем, что директория существует и содержит скрипты
-            if not bot_path.exists() or not bot_path.is_dir():
-                return False
-            
-            # Проверяем наличие скрипта run_bot
-            run_script = bot_path / 'run_bot.sh'
-            run_script_alt = bot_path / 'run_bot'
-            
-            return (run_script.exists() and os.access(run_script, os.X_OK)) or \
-                   (run_script_alt.exists() and os.access(run_script_alt, os.X_OK))
-                   
-        except Exception:
-            return False
     
     def find_memory_hog_process(self) -> Optional[ProcessInfo]:
         """Поиск самого 'жрущего' процесса пользователя"""
