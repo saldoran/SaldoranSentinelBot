@@ -1,4 +1,7 @@
 import asyncio
+import os
+import re
+import subprocess
 from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -419,7 +422,6 @@ class TelegramBot:
                 stop_result = self.bot_manager.force_stop_bot(bot_name)
                 if stop_result:
                     # Ждем немного, чтобы процесс полностью завершился
-                    import asyncio
                     await asyncio.sleep(2)
                     
                     # Затем запускаем бот
@@ -640,7 +642,6 @@ class TelegramBot:
                         parse_mode=ParseMode.HTML
                     )
                     
-                    import subprocess
                     result = subprocess.run(
                         ["sudo", "systemctl", "restart", "saldoran-sentinel"],
                         capture_output=True,
@@ -666,8 +667,6 @@ class TelegramBot:
                         
                 except Exception as e:
                     logger.error(f"Ошибка перезапуска сервиса: {e}")
-                    # Очищаем HTML-теги из ошибки
-                    import re
                     clean_error = re.sub(r'<[^>]+>', '', str(e))
                     try:
                         await query.edit_message_text(
@@ -684,7 +683,6 @@ class TelegramBot:
             elif data == "setup_status":
                 # Статус сервиса
                 try:
-                    import subprocess
                     result = subprocess.run(
                         ["sudo", "systemctl", "status", "saldoran-sentinel", "--no-pager"],
                         capture_output=True,
@@ -712,10 +710,8 @@ class TelegramBot:
             elif data == "setup_clear_cache":
                 # Очистка кэша
                 try:
-                    import subprocess
                     result = subprocess.run(
-                        ["sudo", "sync", "&&", "sudo", "echo", "3", ">", "/proc/sys/vm/drop_caches"],
-                        shell=True,
+                        ['sudo', 'sysctl', '-w', 'vm.drop_caches=3'],
                         capture_output=True,
                         text=True,
                         timeout=10
@@ -724,8 +720,6 @@ class TelegramBot:
                     if result.returncode == 0:
                         message = "✅ Кэш системы очищен!"
                     else:
-                        # Очищаем HTML-теги из ошибки
-                        import re
                         clean_error = re.sub(r'<[^>]+>', '', result.stderr)
                         message = f"❌ Ошибка очистки кэша: {clean_error[:200]}"
                         
@@ -735,8 +729,6 @@ class TelegramBot:
                     )
                 except Exception as e:
                     logger.error(f"Ошибка очистки кэша: {e}")
-                    # Очищаем HTML-теги из ошибки
-                    import re
                     clean_error = re.sub(r'<[^>]+>', '', str(e))
                     await query.edit_message_text(
                         f"❌ Ошибка очистки кэша: {clean_error[:200]}",
@@ -812,8 +804,6 @@ class TelegramBot:
                         message = f"📝 Уровень логирования уже установлен: <code>{current_level}</code>"
                     else:
                         # Обновляем .env файл на сервере
-                        import os
-                        import subprocess
                         from pathlib import Path
                         
                         # Путь к .env файлу на сервере
@@ -911,8 +901,6 @@ class TelegramBot:
                 
         except Exception as e:
             logger.error(f"Ошибка обработки callback {data}: {e}")
-            # Очищаем HTML-теги из ошибки
-            import re
             clean_error = re.sub(r'<[^>]+>', '', str(e))
             await query.edit_message_text(
                 f"❌ Ошибка обработки команды: {clean_error[:200]}",
