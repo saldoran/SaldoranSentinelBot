@@ -134,7 +134,7 @@ class ResourceMonitor:
                 return "unknown"
         
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'username', 'memory_info', 'cmdline']):
+            for proc in psutil.process_iter(['pid', 'ppid', 'name', 'username', 'memory_info', 'cmdline']):
                 try:
                         
                     memory_mb = proc.info['memory_info'].rss / 1024 / 1024
@@ -145,7 +145,12 @@ class ResourceMonitor:
                     cmdline = safe_encode_string(' '.join(str(arg) for arg in cmdline_list))
                     
                     # Пытаемся определить имя бота для Python процессов
-                    bot_name = self._get_bot_name_for_process(proc.info['pid'], process_name, cmdline)
+                    bot_name = self._get_bot_name_for_process(
+                        proc.info['pid'],
+                        proc.info.get('ppid'),
+                        process_name,
+                        cmdline,
+                    )
                     if bot_name:
                         process_name = f"🤖 {bot_name}"
                     
@@ -173,7 +178,13 @@ class ResourceMonitor:
         processes.sort(key=lambda x: x.memory_mb, reverse=True)
         return processes[:limit]
     
-    def _get_bot_name_for_process(self, pid: int, process_name: str, cmdline: str) -> Optional[str]:
+    def _get_bot_name_for_process(
+        self,
+        pid: int,
+        ppid: Optional[int],
+        process_name: str,
+        cmdline: str,
+    ) -> Optional[str]:
         """Определение имени бота по процессу"""
         try:
             # Проверяем только Python процессы
@@ -190,6 +201,10 @@ class ResourceMonitor:
                             bot_name = pid_file.stem  # Имя файла без расширения
                             logger.debug(f"Найден бот {bot_name} по PID файлу для процесса {pid}")
                             return bot_name
+                        if ppid is not None and file_pid == ppid:
+                            bot_name = pid_file.stem  # Имя файла без расширения
+                            logger.debug(f"Найден бот {bot_name} по PID файлу для PPID {ppid} (PID={pid})")
+                            return f"{bot_name}_sub"
                 except (ValueError, IOError):
                     continue
             
