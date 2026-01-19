@@ -2,6 +2,8 @@ import asyncio
 import os
 import re
 import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -136,6 +138,40 @@ class TelegramBot:
     def _is_admin(self, user_id: int) -> bool:
         """Проверка прав администратора"""
         return user_id == self.config.TELEGRAM_ADMIN_ID
+    
+    def _update_env_setting(self, key: str, value: str):
+        """Обновление настройки в .env файле"""
+        env_file = Path(__file__).parent.parent / '.env'
+        
+        try:
+            # Читаем текущий .env файл
+            if env_file.exists():
+                with open(env_file, 'r') as f:
+                    lines = f.readlines()
+            else:
+                lines = []
+            
+            # Ищем и обновляем ключ
+            key_found = False
+            for i, line in enumerate(lines):
+                if line.startswith(f'{key}='):
+                    lines[i] = f'{key}={value}\n'
+                    key_found = True
+                    break
+            
+            # Если ключ не найден, добавляем в конец
+            if not key_found:
+                lines.append(f'{key}={value}\n')
+            
+            # Записываем обновленный .env файл
+            with open(env_file, 'w') as f:
+                f.writelines(lines)
+                
+            logger.info(f"Обновлена настройка {key}={value}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка обновления .env: {e}")
+            raise
     
     def _format_process_info(self, proc) -> str:
         """Форматирование информации о процессе"""
@@ -326,7 +362,6 @@ class TelegramBot:
             # Получаем последние строки лога
             log_lines = []
             # Формируем имя файла лога на текущую дату
-            from datetime import datetime
             today = datetime.now().strftime("%d%m%Y")
             log_file = self.config.LOGS_DIR / f"sentinel_{today}.log"
             
@@ -356,6 +391,12 @@ class TelegramBot:
         """Команда /setup"""
         if not self._is_admin(update.effective_user.id):
             return
+        
+        # Получаем текущие настройки уведомлений
+        Config.reload_config()
+        
+        cpu_status = "✅" if Config.NOTIFY_CPU_ENABLED else "❌"
+        ram_status = "✅" if Config.NOTIFY_RAM_ENABLED else "❌"
             
         message = (
             "⚙️ <b>Настройки и управление</b>\n\n"
@@ -363,6 +404,8 @@ class TelegramBot:
         )
         
         keyboard = [
+            [InlineKeyboardButton(f"🔥 CPU уведомления {cpu_status} ({Config.CPU_THRESHOLD}%)", callback_data="setup_notify_cpu")],
+            [InlineKeyboardButton(f"💾 RAM уведомления {ram_status} ({Config.RAM_THRESHOLD}%)", callback_data="setup_notify_ram")],
             [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
             [InlineKeyboardButton("📊 Статус сервиса", callback_data="setup_status")],
             [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")],
@@ -507,7 +550,6 @@ class TelegramBot:
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 # Добавляем временную метку для уникальности сообщения
-                from datetime import datetime
                 timestamp = datetime.now().strftime("%H:%M:%S")
                 
                 message = (
@@ -537,7 +579,6 @@ class TelegramBot:
                     stats = await self.resource_monitor.get_system_stats()
                     
                     # Добавляем временную метку для уникальности сообщения
-                    from datetime import datetime
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     
                     message = (
@@ -588,7 +629,6 @@ class TelegramBot:
                     stats = await self.resource_monitor.get_system_stats()
                     
                     # Добавляем временную метку для уникальности сообщения
-                    from datetime import datetime
                     timestamp = datetime.now().strftime("%H:%M:%S")
                     
                     message = (
@@ -738,7 +778,6 @@ class TelegramBot:
             elif data == "setup_log_level":
                 # Меню выбора уровня логирования
                 try:
-                    from .config import Config
                     current_level = Config.LOG_LEVEL
                     
                     levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
@@ -774,12 +813,19 @@ class TelegramBot:
             
             elif data == "setup_back":
                 # Возврат к главному меню setup
+                Config.reload_config()
+                
+                cpu_status = "✅" if Config.NOTIFY_CPU_ENABLED else "❌"
+                ram_status = "✅" if Config.NOTIFY_RAM_ENABLED else "❌"
+                
                 message = (
                     "⚙️ <b>Настройки и управление</b>\n\n"
                     "Выберите действие:"
                 )
                 
                 keyboard = [
+                    [InlineKeyboardButton(f"🔥 CPU уведомления {cpu_status} ({Config.CPU_THRESHOLD}%)", callback_data="setup_notify_cpu")],
+                    [InlineKeyboardButton(f"💾 RAM уведомления {ram_status} ({Config.RAM_THRESHOLD}%)", callback_data="setup_notify_ram")],
                     [InlineKeyboardButton("🔄 Перезапустить сервис", callback_data="setup_restart")],
                     [InlineKeyboardButton("📊 Статус сервиса", callback_data="setup_status")],
                     [InlineKeyboardButton("🧹 Очистить кэш", callback_data="setup_clear_cache")],
@@ -793,19 +839,246 @@ class TelegramBot:
                     parse_mode=ParseMode.HTML
                 )
             
+            elif data == "setup_notify_cpu":
+                # Меню настройки CPU уведомлений
+                try:
+                    Config.reload_config()
+                    status = "✅ Включено" if Config.NOTIFY_CPU_ENABLED else "❌ Выключено"
+                    
+                    message = (
+                        f"🔥 <b>Настройка CPU уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.CPU_THRESHOLD}%</code>\n\n"
+                        f"Уведомление придёт когда CPU превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_CPU_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="cpu_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="cpu_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="cpu_threshold_80"),
+                            InlineKeyboardButton("90%", callback_data="cpu_threshold_90"),
+                            InlineKeyboardButton("95%", callback_data="cpu_threshold_95")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка меню CPU уведомлений: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
+            elif data == "setup_notify_ram":
+                # Меню настройки RAM уведомлений
+                try:
+                    Config.reload_config()
+                    status = "✅ Включено" if Config.NOTIFY_RAM_ENABLED else "❌ Выключено"
+                    
+                    message = (
+                        f"💾 <b>Настройка RAM уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.RAM_THRESHOLD}%</code>\n\n"
+                        f"Уведомление придёт когда RAM превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_RAM_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="ram_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="ram_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="ram_threshold_80"),
+                            InlineKeyboardButton("85%", callback_data="ram_threshold_85"),
+                            InlineKeyboardButton("90%", callback_data="ram_threshold_90")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка меню RAM уведомлений: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
+            elif data == "cpu_toggle":
+                # Переключение CPU уведомлений
+                try:
+                    Config.reload_config()
+                    new_value = not Config.NOTIFY_CPU_ENABLED
+                    self._update_env_setting('NOTIFY_CPU_ENABLED', str(new_value).lower())
+                    Config.reload_config()
+                    
+                    # Возвращаемся в меню CPU
+                    status = "✅ Включено" if Config.NOTIFY_CPU_ENABLED else "❌ Выключено"
+                    message = (
+                        f"🔥 <b>Настройка CPU уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.CPU_THRESHOLD}%</code>\n\n"
+                        f"Уведомление придёт когда CPU превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_CPU_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="cpu_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="cpu_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="cpu_threshold_80"),
+                            InlineKeyboardButton("90%", callback_data="cpu_threshold_90"),
+                            InlineKeyboardButton("95%", callback_data="cpu_threshold_95")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка переключения CPU уведомлений: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
+            elif data == "ram_toggle":
+                # Переключение RAM уведомлений
+                try:
+                    Config.reload_config()
+                    new_value = not Config.NOTIFY_RAM_ENABLED
+                    self._update_env_setting('NOTIFY_RAM_ENABLED', str(new_value).lower())
+                    Config.reload_config()
+                    
+                    # Возвращаемся в меню RAM
+                    status = "✅ Включено" if Config.NOTIFY_RAM_ENABLED else "❌ Выключено"
+                    message = (
+                        f"💾 <b>Настройка RAM уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.RAM_THRESHOLD}%</code>\n\n"
+                        f"Уведомление придёт когда RAM превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_RAM_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="ram_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="ram_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="ram_threshold_80"),
+                            InlineKeyboardButton("85%", callback_data="ram_threshold_85"),
+                            InlineKeyboardButton("90%", callback_data="ram_threshold_90")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка переключения RAM уведомлений: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
+            elif data.startswith("cpu_threshold_"):
+                # Установка порога CPU
+                try:
+                    threshold = int(data.replace("cpu_threshold_", ""))
+                    self._update_env_setting('CPU_THRESHOLD', str(threshold))
+                    Config.reload_config()
+                    
+                    # Возвращаемся в меню CPU
+                    status = "✅ Включено" if Config.NOTIFY_CPU_ENABLED else "❌ Выключено"
+                    message = (
+                        f"🔥 <b>Настройка CPU уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.CPU_THRESHOLD}%</code> ✅\n\n"
+                        f"Уведомление придёт когда CPU превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_CPU_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="cpu_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="cpu_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="cpu_threshold_80"),
+                            InlineKeyboardButton("90%", callback_data="cpu_threshold_90"),
+                            InlineKeyboardButton("95%", callback_data="cpu_threshold_95")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка установки порога CPU: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
+            elif data.startswith("ram_threshold_"):
+                # Установка порога RAM
+                try:
+                    threshold = int(data.replace("ram_threshold_", ""))
+                    self._update_env_setting('RAM_THRESHOLD', str(threshold))
+                    Config.reload_config()
+                    
+                    # Возвращаемся в меню RAM
+                    status = "✅ Включено" if Config.NOTIFY_RAM_ENABLED else "❌ Выключено"
+                    message = (
+                        f"💾 <b>Настройка RAM уведомлений</b>\n\n"
+                        f"Статус: {status}\n"
+                        f"Порог: <code>{Config.RAM_THRESHOLD}%</code> ✅\n\n"
+                        f"Уведомление придёт когда RAM превысит порог."
+                    )
+                    
+                    toggle_text = "❌ Выключить" if Config.NOTIFY_RAM_ENABLED else "✅ Включить"
+                    
+                    keyboard = [
+                        [InlineKeyboardButton(toggle_text, callback_data="ram_toggle")],
+                        [
+                            InlineKeyboardButton("70%", callback_data="ram_threshold_70"),
+                            InlineKeyboardButton("80%", callback_data="ram_threshold_80"),
+                            InlineKeyboardButton("85%", callback_data="ram_threshold_85"),
+                            InlineKeyboardButton("90%", callback_data="ram_threshold_90")
+                        ],
+                        [InlineKeyboardButton("🔙 Назад", callback_data="setup_back")]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    logger.error(f"Ошибка установки порога RAM: {e}")
+                    await query.edit_message_text(f"❌ Ошибка: {e}", parse_mode=ParseMode.HTML)
+            
             elif data.startswith("log_level_"):
                 # Установка конкретного уровня логирования
                 try:
                     new_level = data.replace("log_level_", "")
-                    from .config import Config
                     current_level = Config.LOG_LEVEL
                     
                     if new_level == current_level:
                         message = f"📝 Уровень логирования уже установлен: <code>{current_level}</code>"
                     else:
                         # Обновляем .env файл на сервере
-                        from pathlib import Path
-                        
                         # Путь к .env файлу на сервере
                         env_file = Path(__file__).parent.parent / '.env'
                         

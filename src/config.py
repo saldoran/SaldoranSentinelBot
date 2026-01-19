@@ -42,6 +42,12 @@ class Config:
     TARGET_USER = os.getenv('TARGET_USER', getpass.getuser())
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
+    # Notification Settings
+    NOTIFY_CPU_ENABLED = os.getenv('NOTIFY_CPU_ENABLED', 'true').lower() == 'true'
+    NOTIFY_RAM_ENABLED = os.getenv('NOTIFY_RAM_ENABLED', 'true').lower() == 'true'
+    CPU_THRESHOLD = int(os.getenv('CPU_THRESHOLD', 80))
+    RAM_THRESHOLD = int(os.getenv('RAM_THRESHOLD', 85))
+    
     @classmethod
     def reload_config(cls):
         """Перезагружает конфигурацию из .env файла"""
@@ -54,6 +60,11 @@ class Config:
         cls.MONITORING_INTERVAL = int(os.getenv('MONITORING_INTERVAL', 60))
         cls.TARGET_USER = os.getenv('TARGET_USER', getpass.getuser())
         cls.LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+        # Notification Settings
+        cls.NOTIFY_CPU_ENABLED = os.getenv('NOTIFY_CPU_ENABLED', 'true').lower() == 'true'
+        cls.NOTIFY_RAM_ENABLED = os.getenv('NOTIFY_RAM_ENABLED', 'true').lower() == 'true'
+        cls.CPU_THRESHOLD = int(os.getenv('CPU_THRESHOLD', 80))
+        cls.RAM_THRESHOLD = int(os.getenv('RAM_THRESHOLD', 85))
     
     @classmethod
     def validate(cls):

@@ -296,37 +296,61 @@ class ResourceMonitor:
     
     def check_memory_critical(self) -> bool:
         """Проверка критического состояния памяти"""
+        # Перезагружаем конфиг для актуальных настроек
+        Config.reload_config()
+        
         memory = psutil.virtual_memory()
         available_mb = memory.available / 1024 / 1024
+        memory_percent = memory.percent
         
-        is_critical = available_mb < self.min_free_ram_mb
+        # Проверяем по проценту (новые настройки) или по минимуму MB (старые настройки)
+        is_critical_percent = memory_percent > Config.RAM_THRESHOLD
+        is_critical_mb = available_mb < self.min_free_ram_mb
+        is_critical = is_critical_percent or is_critical_mb
         
         if is_critical:
             logger.warning(f"КРИТИЧЕСКОЕ состояние памяти! "
-                          f"Доступно: {available_mb:.1f}MB, "
-                          f"Минимум: {self.min_free_ram_mb}MB")
+                          f"Использовано: {memory_percent:.1f}% (порог: {Config.RAM_THRESHOLD}%), "
+                          f"Доступно: {available_mb:.1f}MB")
+            
+            # Отправляем уведомление в Telegram если включено
+            if Config.NOTIFY_RAM_ENABLED and self.telegram_bot:
+                try:
+                    loop = asyncio.get_event_loop()
+                    message = (
+                        f"💾 Критическое использование RAM!\n\n"
+                        f"📊 Использовано: {memory_percent:.1f}%\n"
+                        f"⚠️ Порог: {Config.RAM_THRESHOLD}%\n"
+                        f"🆓 Доступно: {available_mb:.1f}MB\n\n"
+                        f"🔍 Проверьте процессы командой /resources"
+                    )
+                    loop.create_task(self._send_telegram_alert(message))
+                except Exception as e:
+                    logger.error(f"Ошибка отправки RAM уведомления: {e}")
         
         return is_critical
     
     def check_cpu_critical(self) -> Tuple[bool, float]:
         """Проверка критического использования CPU"""
+        # Перезагружаем конфиг для актуальных настроек
+        Config.reload_config()
+        
         cpu_percent = psutil.cpu_percent(interval=1)
-        is_critical = cpu_percent > self.max_cpu_percent
+        is_critical = cpu_percent > Config.CPU_THRESHOLD
         
         if is_critical:
             logger.warning(f"КРИТИЧЕСКОЕ использование CPU! "
                           f"Текущее: {cpu_percent:.1f}%, "
-                          f"Максимум: {self.max_cpu_percent}%")
+                          f"Порог: {Config.CPU_THRESHOLD}%")
             
-            # Отправляем уведомление в Telegram
-            if self.telegram_bot:
-                import asyncio
+            # Отправляем уведомление в Telegram если включено
+            if Config.NOTIFY_CPU_ENABLED and self.telegram_bot:
                 try:
                     loop = asyncio.get_event_loop()
                     message = (
                         f"🔥 Критическое использование CPU!\n\n"
                         f"📊 Текущее: {cpu_percent:.1f}%\n"
-                        f"⚠️ Максимум: {self.max_cpu_percent}%\n\n"
+                        f"⚠️ Порог: {Config.CPU_THRESHOLD}%\n\n"
                         f"🔍 Проверьте процессы командой /resources"
                     )
                     loop.create_task(self._send_telegram_alert(message))
@@ -350,7 +374,6 @@ class ResourceMonitor:
         
         # Отправляем уведомление о начале экстренной очистки
         if self.telegram_bot:
-            import asyncio
             try:
                 loop = asyncio.get_event_loop()
                 loop.create_task(self._send_telegram_alert(
@@ -388,7 +411,6 @@ class ResourceMonitor:
         
         # Отправляем результат в Telegram
         if self.telegram_bot:
-            import asyncio
             try:
                 loop = asyncio.get_event_loop()
                 if available_after_mb >= self.min_free_ram_mb:
