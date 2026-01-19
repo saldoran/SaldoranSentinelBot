@@ -215,6 +215,11 @@ class ResourceMonitor:
                     logger.debug(f"Найден бот {parent_bot_name} по PID файлу для PPID {ppid} (PID={pid})")
                     return f"{parent_bot_name}_sub"
 
+            # Метод 2: Определяем сам SaldoranSentinelBot (systemd service)
+            # Обычно запускается как: /home/SaldoranSentinelBot/venv/bin/python -m src.main
+            if "SaldoranSentinelBot" in cmdline and re.search(r'(^|\s)-m\s+src\.main(\s|$)', cmdline):
+                return "sentinel"
+
             # Метод 2: Анализируем командную строку для поиска имени бота
             # Ищем в test_bot директории
             match = re.search(r'/test_bot/([^/]+)/', cmdline)
