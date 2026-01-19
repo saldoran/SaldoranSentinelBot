@@ -193,21 +193,28 @@ class ResourceMonitor:
             
             # Метод 1: Проверяем PID файлы ботов в /tmp
             tmp_dir = Path('/tmp')
+
+            pid_to_bot: Dict[int, str] = {}
             for pid_file in tmp_dir.glob('*.pid'):
                 try:
                     with open(pid_file, 'r') as f:
                         file_pid = int(f.read().strip())
-                        if file_pid == pid:
-                            bot_name = pid_file.stem  # Имя файла без расширения
-                            logger.debug(f"Найден бот {bot_name} по PID файлу для процесса {pid}")
-                            return bot_name
-                        if ppid is not None and file_pid == ppid:
-                            bot_name = pid_file.stem  # Имя файла без расширения
-                            logger.debug(f"Найден бот {bot_name} по PID файлу для PPID {ppid} (PID={pid})")
-                            return f"{bot_name}_sub"
+                        pid_to_bot[file_pid] = pid_file.stem  # Имя файла без расширения
                 except (ValueError, IOError):
                     continue
-            
+
+            # Direct PID match must take priority over PPID match across ALL pid files
+            bot_name = pid_to_bot.get(pid)
+            if bot_name:
+                logger.debug(f"Найден бот {bot_name} по PID файлу для процесса {pid}")
+                return bot_name
+
+            if ppid is not None:
+                parent_bot_name = pid_to_bot.get(ppid)
+                if parent_bot_name:
+                    logger.debug(f"Найден бот {parent_bot_name} по PID файлу для PPID {ppid} (PID={pid})")
+                    return f"{parent_bot_name}_sub"
+
             # Метод 2: Анализируем командную строку для поиска имени бота
             # Ищем в test_bot директории
             match = re.search(r'/test_bot/([^/]+)/', cmdline)
