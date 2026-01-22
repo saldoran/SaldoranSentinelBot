@@ -155,17 +155,34 @@ class BotManager:
         else:
             logger.debug(f"PID файл {pid_file} не найден")
         
-        # Если PID файл не помог, используем старый метод поиска по процессам
-        logger.debug(f"Поиск процессов бота {bot_name} по командной строке...")
+        # Если PID файл не помог, ищем главный процесс по cwd + cmdline
+        bot_path = self.bots_dir / bot_name
+        bot_path_str = str(bot_path)
+        logger.debug(f"Поиск главного процесса бота {bot_name} по cwd/cmdline...")
         try:
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username']):
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username', 'cwd']):
                 try:
-                    if proc.info['username'] != Config.TARGET_USER:
+                    proc_user = proc.info.get('username')
+                    if proc_user != Config.TARGET_USER:
                         continue
                         
-                    cmdline = ' '.join(proc.info['cmdline'] or [])
-                    if bot_name in cmdline and ('run_bot' in cmdline or f'{bot_name}' in cmdline):
-                        logger.info(f"Найден процесс бота {bot_name} (PID: {proc.info['pid']})")
+                    cmdline = ' '.join(proc.info.get('cmdline') or [])
+                    if not cmdline:
+                        continue
+
+                    proc_cwd = proc.info.get('cwd')
+                    if proc_cwd:
+                        if not str(proc_cwd).startswith(bot_path_str):
+                            continue
+                    else:
+                        # Без cwd: проверяем, что путь бота встречается в cmdline
+                        if bot_path_str not in cmdline:
+                            continue
+
+                    # Опознаем главный процесс бота (не дочерний worker/fetcher)
+                    is_main_process = "core.main_async" in cmdline or "main.py" in cmdline
+                    if is_main_process:
+                        logger.info(f"Найден главный процесс бота {bot_name} (PID: {proc.info['pid']})")
                         return True, proc.info['pid']
                         
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
