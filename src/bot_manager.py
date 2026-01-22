@@ -157,7 +157,11 @@ class BotManager:
         
         # Если PID файл не помог, ищем главный процесс по cwd + cmdline
         bot_path = self.bots_dir / bot_name
-        bot_path_str = str(bot_path)
+        try:
+            bot_root = bot_path.resolve()
+        except Exception:
+            bot_root = bot_path
+        bot_path_str = str(bot_root)
         logger.debug(f"Поиск главного процесса бота {bot_name} по cwd/cmdline...")
         try:
             for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'username', 'cwd']):
@@ -166,17 +170,32 @@ class BotManager:
                     if proc_user != Config.TARGET_USER:
                         continue
                         
-                    cmdline = ' '.join(proc.info.get('cmdline') or [])
+                    cmdline_list = proc.info.get('cmdline') or []
+                    cmdline = ' '.join(cmdline_list)
                     if not cmdline:
                         continue
 
                     proc_cwd = proc.info.get('cwd')
                     if proc_cwd:
-                        if not str(proc_cwd).startswith(bot_path_str):
+                        try:
+                            proc_cwd_path = Path(proc_cwd).resolve()
+                        except Exception:
+                            proc_cwd_path = None
+                        if not proc_cwd_path:
+                            continue
+                        if proc_cwd_path != bot_root and bot_root not in proc_cwd_path.parents:
                             continue
                     else:
-                        # Без cwd: проверяем, что путь бота встречается в cmdline
-                        if bot_path_str not in cmdline:
+                        # Без cwd: проверяем, что путь бота встречается в cmdline как отдельный путь
+                        has_bot_path = False
+                        for arg in cmdline_list:
+                            if not arg:
+                                continue
+                            arg_norm = arg.rstrip(os.sep)
+                            if arg_norm == bot_path_str or arg_norm.startswith(bot_path_str + os.sep):
+                                has_bot_path = True
+                                break
+                        if not has_bot_path:
                             continue
 
                     # Опознаем главный процесс бота (не дочерний worker/fetcher)
