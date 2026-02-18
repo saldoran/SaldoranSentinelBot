@@ -137,8 +137,10 @@ class ResourceMonitor:
         try:
             for proc in psutil.process_iter(['pid', 'ppid', 'name', 'username', 'memory_info', 'cmdline']):
                 try:
-                        
-                    memory_mb = proc.info['memory_info'].rss / 1024 / 1024
+                    try:
+                        memory_mb = proc.memory_full_info().uss / 1024 / 1024
+                    except (psutil.AccessDenied, AttributeError):
+                        memory_mb = proc.info['memory_info'].rss / 1024 / 1024
                     
                     # Безопасно обрабатываем имя процесса и командную строку
                     process_name = safe_encode_string(proc.info['name'] or "unknown")
