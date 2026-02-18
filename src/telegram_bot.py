@@ -173,15 +173,60 @@ class TelegramBot:
             logger.error(f"Ошибка обновления .env: {e}")
             raise
     
-    def _format_process_info(self, proc) -> str:
+    def _format_process_info(self, proc, indent: str = "•") -> str:
         """Форматирование информации о процессе"""
-        # Для Python процессов показываем имя бота и PID
         if 'python' in proc.name.lower() or '🤖' in proc.name:
-            # Извлекаем имя бота из названия процесса
             bot_name = proc.name.replace('🤖 ', '') if '🤖' in proc.name else 'Python'
-            return f"• {bot_name} (PID: {proc.pid}): {proc.memory_mb:.1f}MB"
+            return f"{indent} {bot_name} (PID: {proc.pid}): {proc.memory_mb:.1f}MB"
         else:
-            return f"• {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB"
+            return f"{indent} {proc.name} ({proc.username}): {proc.memory_mb:.1f}MB"
+
+    @staticmethod
+    def _group_processes(processes) -> list:
+        """Group child processes under their parent.
+
+        Returns list of (root_proc, total_memory_mb, [children]).
+        Sorted by total_memory_mb descending.
+        """
+        pid_set = {p.pid for p in processes}
+        children_of: dict[int, list] = {}
+        roots = []
+
+        for proc in processes:
+            if proc.ppid in pid_set and proc.ppid != proc.pid:
+                children_of.setdefault(proc.ppid, []).append(proc)
+            else:
+                roots.append(proc)
+
+        result = []
+        for root in roots:
+            kids = children_of.pop(root.pid, [])
+            kids.sort(key=lambda p: p.memory_mb, reverse=True)
+            total_mem = root.memory_mb + sum(k.memory_mb for k in kids)
+            result.append((root, total_mem, kids))
+
+        result.sort(key=lambda x: x[1], reverse=True)
+        return result
+
+    def _format_process_tree(self, processes, limit: int = 12) -> str:
+        """Format grouped process tree for Telegram display."""
+        grouped = self._group_processes(processes)
+        lines = []
+        shown = 0
+
+        for root, total_mem, children in grouped:
+            if shown >= limit:
+                break
+            if children:
+                lines.append(self._format_process_info(root, indent="•") + f"  (Σ {total_mem:.1f}MB)")
+                for i, child in enumerate(children):
+                    connector = "└" if i == len(children) - 1 else "├"
+                    lines.append(self._format_process_info(child, indent=f"  {connector}"))
+            else:
+                lines.append(self._format_process_info(root, indent="•"))
+            shown += 1
+
+        return "\n".join(lines)
         
     async def _cmd_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда /start"""
@@ -642,8 +687,7 @@ class TelegramBot:
                     
                     if stats.get('top_processes'):
                         message += "🔝 <b>Все процессы по памяти:</b>\n"
-                        for proc in stats['top_processes']:  # Показываем все процессы
-                            message += self._format_process_info(proc) + "\n"
+                        message += self._format_process_tree(stats['top_processes']) + "\n"
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     

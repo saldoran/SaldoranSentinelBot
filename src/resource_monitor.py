@@ -28,6 +28,7 @@ class ProcessInfo:
     cpu_percent: float
     memory_mb: float
     cmdline: str
+    ppid: int = 0
 
 
 @dataclass
@@ -108,7 +109,7 @@ class ResourceMonitor:
         memory_percent = memory.percent
         
         # Топ процессов по использованию памяти
-        top_processes = self._get_top_memory_processes(limit=10)
+        top_processes = self._get_top_memory_processes(limit=25)
         
         return {
             'cpu_percent': cpu_percent,
@@ -163,7 +164,8 @@ class ResourceMonitor:
                         username=proc.info['username'],
                         cpu_percent=cpu_percent,
                         memory_mb=memory_mb,
-                        cmdline=cmdline[:100]  # Ограничиваем длину командной строки
+                        cmdline=cmdline[:100],
+                        ppid=proc.info.get('ppid', 0) or 0,
                     )
                     
                     processes.append(process_info)
