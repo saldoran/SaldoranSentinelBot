@@ -193,7 +193,7 @@ class TelegramBot:
         roots = []
 
         for proc in processes:
-            if proc.ppid in pid_set and proc.ppid != proc.pid:
+            if proc.ppid in pid_set and proc.ppid != proc.pid and proc.ppid != 1:
                 children_of.setdefault(proc.ppid, []).append(proc)
             else:
                 roots.append(proc)
@@ -377,8 +377,7 @@ class TelegramBot:
             
             if stats.get('top_processes'):
                 message += "🔝 <b>Топ процессов по памяти:</b>\n"
-                for proc in stats['top_processes'][:5]:
-                    message += self._format_process_info(proc) + "\n"
+                message += self._format_process_tree(stats['top_processes'], limit=5) + "\n"
                     
             keyboard = [
                 [InlineKeyboardButton("📋 Подробнее", callback_data="resources_detailed")],
@@ -637,8 +636,7 @@ class TelegramBot:
                     
                     if stats.get('top_processes'):
                         message += "🔝 <b>Топ процессов по памяти:</b>\n"
-                        for proc in stats['top_processes'][:5]:
-                            message += self._format_process_info(proc) + "\n"
+                        message += self._format_process_tree(stats['top_processes'], limit=5) + "\n"
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     
@@ -687,7 +685,7 @@ class TelegramBot:
                     
                     if stats.get('top_processes'):
                         message += "🔝 <b>Все процессы по памяти:</b>\n"
-                        message += self._format_process_tree(stats['top_processes']) + "\n"
+                        message += self._format_process_tree(stats['top_processes'], limit=20) + "\n"
                     
                     message += f"\n<i>Обновлено: {timestamp}</i>"
                     
